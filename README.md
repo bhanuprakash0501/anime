@@ -46,6 +46,13 @@ creature swims into a projected aquarium with the name floating above it.
   squeeze), upright (sway), crawl (floor scuttle). A submarine pipe at the top right pumps
   every newly scanned creature into the tank with a burst of bubbles. Open `?pipe=1` to see
   all creatures enter through the pipe on load.
+* `aquarium/scenery.js` builds the reef: noise-displaced boulders with a mottled stone
+  texture, three rock formations with dark cave mouths, tufts of tapered swaying sea grass,
+  tall kelp, and corals (branching staghorn, brain coral, sea fans, tube sponges, waving
+  anemones). The cave formations are hideouts: now and then a swimmer or the crab heads for
+  a cave mouth, slips in behind the rocks, rests out of sight for 4-10 seconds, then comes
+  back out.
+* The scan page offers the printable sheets as one PDF (`/templates.pdf`).
 * Each creature stays for 2 minutes after its scan, then swims out of frame and retires.
   The server stops listing it too, so a page refresh does not bring it back. Change the
   timeout with `python app.py --ttl 300` (seconds) or `run.bat --ttl 300`.

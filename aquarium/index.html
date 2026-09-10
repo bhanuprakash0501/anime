@@ -16,7 +16,8 @@
   #scanurl canvas { width: 16vmin; height: 16vmin; background: #fff; border-radius: .8vmin; padding: .6vmin; box-sizing: border-box; display: block; }
   #scanurl .txt { display: flex; flex-direction: column; gap: .3em; }
   #scanurl .txt small { opacity: .85; font-weight: 500; }
-  #scanurl b { font-size: 1.1em; word-break: break-all; }
+  #scanurl b { font-size: 1.15em; }
+  #scanurl .txt { max-width: 28vmin; }
 </style>
 </head>
 <body>
@@ -31,7 +32,7 @@
     const el = document.getElementById('scanurl');
     const BASE = location.pathname.replace(/\/(index\.html|scan|admin)?$/, '');
     const show = url => {
-      el.innerHTML = '<canvas id="qr"></canvas><div class="txt"><small>Point your phone camera here</small><b>' + url + '</b></div>';
+      el.innerHTML = '<canvas id="qr"></canvas><div class="txt"><b>Point your phone camera here</b><small>to download coloring sheets and scan or upload your drawing</small></div>';
       // QR code drawn in the browser, so it always matches the address this page was opened from
       try {
         const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
@@ -49,6 +50,7 @@
   })();
 </script>
 <script src="vendor/three.min.js"></script>
+<script src="scenery.js"></script>
 <script src="models.js"></script>
 <script src="app.js"></script>
 </body>

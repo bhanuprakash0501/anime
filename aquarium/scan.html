@@ -16,6 +16,7 @@
   .btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 18px; border: 0; border-radius: 14px;
          font-size: 1.15rem; font-weight: 700; color: #063a5a; background: #ffd23f; cursor: pointer; margin-top: 12px; }
   .btn.secondary { background: rgba(255,255,255,.9); }
+  a.btn { text-decoration: none; }
   .btn:active { transform: scale(.98); }
   .btn[disabled] { opacity: .5; cursor: default; }
   input[type=file] { display: none; }
@@ -60,6 +61,12 @@
   </div>
 
   <div class="card">
+    <strong>Need a sheet to color?</strong>
+    <a class="btn secondary" id="pdf" href="templates.pdf" download="sketch-aquarium-sheets.pdf">📄 Download coloring sheets (PDF)</a>
+    <p style="margin:8px 0 0;opacity:.85">Eight creatures, US Letter. Print at 100% so the corner squares stay sharp.</p>
+  </div>
+
+  <div class="card">
     <strong>Tips</strong>
     <ul class="tips">
       <li>Keep the whole sheet in the photo, all four corner squares included.</li>
@@ -84,6 +91,7 @@
   $('fileInput').onchange = e => handleFile(e.target.files[0]);
   $('again').onclick = () => { result.classList.remove('show'); $('capture').style.display = ''; status.textContent = ''; startLive(); };
   $('url').textContent = location.href.split('?')[0];
+  $('pdf').href = BASE + '/templates.pdf';
 
   // Live preview only works on secure origins (localhost / https). Elsewhere the
   // native camera app via the file picker is used, which works on every phone.

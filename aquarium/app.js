@@ -93,43 +93,9 @@
     scene.add(floor);
   }
 
-  // ------------------------------------------------------- rocks, coral, weed
-  const rockMat = new THREE.MeshLambertMaterial({ color: 0x5b6b78 });
-  for (let i = 0; i < 12; i++) {
-    const r = new THREE.Mesh(new THREE.DodecahedronGeometry(rand(1.5, 4), 1), rockMat);
-    r.position.set(rand(-40, 40), FLOOR_Y + 0.3, rand(-40, 8));
-    r.scale.y = rand(0.4, 0.8); r.rotation.set(rand(0, 3), rand(0, 3), rand(0, 3));
-    scene.add(r);
-  }
-  for (let i = 0; i < 14; i++) {
-    const g = new THREE.Group();
-    const col = new THREE.Color().setHSL(rand(0.78, 0.95), 0.7, 0.55);
-    const m = new THREE.MeshLambertMaterial({ color: col });
-    const n = 4 + (Math.random() * 4 | 0);
-    for (let k = 0; k < n; k++) {
-      const b = new THREE.Mesh(new THREE.CapsuleGeometry(rand(0.25, 0.5), rand(1.5, 4), 4, 8), m);
-      const a = rand(-0.6, 0.6);
-      b.position.set(Math.sin(a) * 1.2, 1.2, rand(-0.6, 0.6));
-      b.rotation.z = a;
-      g.add(b);
-    }
-    g.position.set(rand(-38, 38), FLOOR_Y, rand(-38, 8));
-    scene.add(g);
-  }
-  const weeds = [];
-  {
-    const wm = new THREE.MeshLambertMaterial({ color: 0x3fb54a, side: THREE.DoubleSide });
-    for (let i = 0; i < 40; i++) {
-      const h = rand(4, 11);
-      const geo = new THREE.PlaneGeometry(rand(0.5, 0.9), h, 1, 10);
-      geo.translate(0, h / 2, 0);
-      const w = new THREE.Mesh(geo, wm);
-      w.position.set(rand(-40, 40), FLOOR_Y, rand(-40, 8));
-      w.rotation.y = rand(0, Math.PI);
-      w.userData = { h, p: rand(0, 6.28), base: geo.attributes.position.array.slice() };
-      scene.add(w); weeds.push(w);
-    }
-  }
+  // ------------------------------------------------- reef scenery + hideouts
+  const scenery = SketchScenery.build(scene, FLOOR_Y);
+  const HIDEOUTS = scenery.hideouts;
 
   // ------------------------------------------------------------- light rays
   const rays = [];
@@ -342,6 +308,17 @@
 
   function pickTarget(c, opts = {}) {
     const m = c.motion, p = c.mesh.position;
+    // now and then, go and hide in one of the rock caves (swimmers and the crab)
+    const hideChance = SWIMMERS.has(m) ? 0.14 : (m === 'crawl' ? 0.2 : 0);
+    if (!opts.leave && !opts.stayIn && c.state === 'in' && !c.hide && Math.random() < hideChance) {
+      const h = HIDEOUTS[Math.floor(Math.random() * HIDEOUTS.length)];
+      const floor = m === 'crawl';
+      c.hide = { stage: 'mouth', mouth: floor ? h.floorMouth : h.mouth, inside: floor ? h.floorInside : h.inside };
+      c.excursion = false;
+      c.target.copy(c.hide.mouth);
+      c.nextTarget = performance.now() / 1000 + 14;
+      return;
+    }
     let x, y = rand(TANK.yMin, TANK.yMax), z = rand(TANK.zMin, TANK.zMax);
     const outChance = SWIMMERS.has(m) ? 0.22 : (m === 'crawl' ? 0.15 : 0.06);
     if (opts.leave || (!opts.stayIn && c.state === 'in' && Math.random() < outChance)) {
@@ -436,6 +413,7 @@
     // ---- lifetime: after the timeout, swim out of frame and retire
     if (c.state !== 'leaving' && c.state !== 'gone' && t > c.expires) {
       if (c.state === 'out') return removeCreature(c);        // already hidden: just go
+      c.hide = null; if (c.nameSprite) c.nameSprite.visible = true;
       c.state = 'leaving';
       pickTarget(c, { leave: true });
     }
@@ -462,6 +440,20 @@
     }
 
     const reached = p.distanceTo(c.target) < 2.5;
+    if (c.hide && c.state === 'in') {
+      if (c.hide.stage === 'mouth' && (reached || t > c.nextTarget)) {
+        c.hide.stage = 'inside'; c.target.copy(c.hide.inside); c.nextTarget = t + 8;
+      } else if (c.hide.stage === 'inside' && (reached || t > c.nextTarget)) {
+        c.hide.stage = 'resting'; c.hide.until = t + rand(4, 10);
+        if (c.nameSprite) c.nameSprite.visible = false;
+      } else if (c.hide.stage === 'resting') {
+        if (t < c.hide.until) { c.vel.multiplyScalar(1 - 3 * dt); c.model.anim(t, { speedFactor: 0.4, phase: c.phase }); return; }
+        c.hide.stage = 'leaving'; c.target.copy(c.hide.mouth); c.nextTarget = t + 8;
+        if (c.nameSprite) c.nameSprite.visible = true;
+      } else if (c.hide.stage === 'leaving' && (reached || t > c.nextTarget)) {
+        c.hide = null; pickTarget(c, { stayIn: true });
+      }
+    }
     if (reached && c.excursion && c.state === 'in') {
       // slipped out of the frame: hide for a while
       c.state = 'out'; c.excursion = false;
@@ -469,7 +461,7 @@
       c.mesh.visible = false; if (c.nameSprite) c.nameSprite.visible = false;
       return;
     }
-    if (c.state === 'in' && (t > c.nextTarget || reached)) pickTarget(c);
+    if (c.state === 'in' && !c.hide && (t > c.nextTarget || reached)) pickTarget(c);
 
     // ---- steer toward the target
     const desired = c.target.clone().sub(p).normalize().multiplyScalar(c.spec.speed * (c.state === 'leaving' ? 1.3 : 1));
@@ -562,14 +554,7 @@
     for (let i = creatures.length - 1; i >= 0; i--) if (creatures[i].state === 'gone') creatures.splice(i, 1);
     if (creatures.length === 0) hint.classList.remove('hidden');
 
-    for (const w of weeds) {
-      const pos = w.geometry.attributes.position, a = pos.array, b = w.userData.base;
-      for (let i = 0; i < a.length; i += 3) {
-        const k = b[i + 1] / w.userData.h;
-        a[i] = b[i] + Math.sin(t * 1.3 + w.userData.p + k * 2.5) * 1.2 * k * k;
-      }
-      pos.needsUpdate = true;
-    }
+    scenery.update(t, dt);
     for (const r of rays) r.rotation.z = Math.sin(t * r.userData.s + r.userData.p) * 0.12;
     for (let i = bubbles.length - 1; i >= 0; i--) {
       const b = bubbles[i];

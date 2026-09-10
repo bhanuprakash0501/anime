@@ -103,6 +103,18 @@ class Handler(SimpleHTTPRequestHandler):
         elif self.path == "/scan" or self.path.startswith("/scan?"):
             self.path = "/scan.html"
             super().do_GET()
+        elif self.path.split("?")[0] == "/templates.pdf":
+            p = os.path.join(scanner.TPL_DIR, "all_sheets.pdf")
+            if not os.path.exists(p):
+                return self.send_error(404)
+            with open(p, "rb") as f:
+                data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Disposition", 'attachment; filename="sketch-aquarium-sheets.pdf"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
         elif self.path.startswith("/sprites/"):
             p = os.path.join(scanner.SPRITES_DIR, os.path.basename(self.path.split("?")[0]))
             if os.path.exists(p):
