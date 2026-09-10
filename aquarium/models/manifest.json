@@ -1,2 +1,10 @@
 {
+  "clownfish": { "file": "clownfish.glb", "plane": "side",  "rotateY": 90, "keep": ["eye"], "speed": 1.0 },
+  "shark":     { "file": "shark.glb",     "plane": "side",  "rotateY": 90, "keep": ["eye", "teeth", "tooth"], "speed": 1.0 },
+  "ray":       { "file": "manta.glb",     "plane": "top",   "rotateY": 90, "keep": ["eye"] },
+  "turtle":    { "file": "turtle.glb",    "plane": "top",   "rotateY": 90, "keep": ["eye"] },
+  "seahorse":  { "file": "seahorse.glb",  "plane": "side",  "rotateY": 90, "keep": ["eye"] },
+  "jellyfish": { "file": "jellyfish.glb", "plane": "front", "rotateY": 0 },
+  "octopus":   { "file": "octopus.glb",   "plane": "front", "rotateY": 0,  "keep": ["eye"] },
+  "crab":      { "file": "crab.glb",      "plane": "top",   "rotateY": 0,  "keep": ["eye"] }
 }

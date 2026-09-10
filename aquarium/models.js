@@ -667,7 +667,9 @@ window.SketchModels = (() => {
     const box = new T.Box3().setFromObject(g);
     const size = new T.Vector3(); box.getSize(size);
     const centre = new T.Vector3(); box.getCenter(centre);
-    const s = (spec.scale || 1) / Math.max(size.x, 1e-6);
+    // normalise on the largest dimension so tall (seahorse, jellyfish) and wide (ray) models
+    // come out at the same overall size as the procedural rigs
+    const s = (spec.scale || 1) / Math.max(size.x, size.y, size.z, 1e-6);
     holder.position.sub(centre).multiplyScalar(s);
     holder.scale.setScalar(s);
     holder.position.add(new T.Vector3().copy(centre).multiplyScalar(-0).add(new T.Vector3(0, 0, 0)));

@@ -47,8 +47,11 @@ creature swims into a projected aquarium with the name floating above it.
   squeeze), upright (sway), crawl (floor scuttle). A submarine pipe at the top right pumps
   every newly scanned creature into the tank with a burst of bubbles. Open `?pipe=1` to see
   all creatures enter through the pipe on load.
-* **Real 3D models (optional).** Any species can use an artist-made or scanned glTF model
-  instead of its procedural rig: put the `.glb` in `aquarium/models/` and list it in
+* **Real 3D models.** All eight species ship with low-poly artist models in
+  `aquarium/models/` (Quaternius CC0 clownfish, shark and manta; Poly by Google CC-BY turtle,
+  octopus, crab, jellyfish and seahorse; see `models/CREDITS.md`). Embedded textures were
+  stripped since the tank skins them with the drawing. To swap any of them for a better or
+  more realistic model, replace the `.glb` in `aquarium/models/` and adjust its line in
   `aquarium/models/manifest.json` (see `manifest.example.json`): file, projection plane for
   the drawing (`side`, `top` or `front`), a `rotateY` so the head points +x, name fragments
   of parts that keep their own material (`keep`, e.g. eyes and teeth), and an animation
