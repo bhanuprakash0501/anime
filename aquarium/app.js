@@ -161,33 +161,164 @@
   for (let i = 0; i < 40; i++) spawnBubble(rand(-40, 40), rand(0, 25), rand(-40, 8), rand(0.08, 0.25), rand(1, 2.5));
 
   // -------------------------------------------------------- submarine pipe
+  // An old painted-steel pipe drops in from above, elbows toward the tank and ends in a
+  // bell-mouth nozzle. pipeFX() makes it shudder, glow and blast rings when a creature arrives.
+  const pipe = new THREE.Group();
+  const pipeFX = { t0: -99, rings: [], streaks: [] };
+  let valveWheel, glowRing, throat, nozzle, gaugeNeedle;
   {
-    const metal = new THREE.MeshStandardMaterial({ color: 0x8a949c, metalness: 0.75, roughness: 0.35 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x2b3138, metalness: 0.4, roughness: 0.7 });
-    const R = 2.6;
-    const g = new THREE.Group();
-    const vert = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 30, 24), metal);
-    vert.position.set(R, 15 + R, 0);
-    g.add(vert);
-    const elbow = new THREE.Mesh(new THREE.TorusGeometry(R, R, 16, 24, Math.PI / 2), metal);
-    elbow.rotation.z = Math.PI; elbow.position.set(0, R, 0);
-    g.add(elbow);
-    const spout = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 4, 24), metal);
-    spout.rotation.z = Math.PI / 2; spout.position.set(-2, 0, 0);
-    g.add(spout);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(R + 0.15, 0.45, 12, 28), metal);
-    rim.rotation.y = Math.PI / 2; rim.position.set(-4, 0, 0);
-    g.add(rim);
-    const hole = new THREE.Mesh(new THREE.CircleGeometry(R - 0.1, 24), dark);
-    hole.rotation.y = -Math.PI / 2; hole.position.set(-3.95, 0, 0);
-    g.add(hole);
-    for (const y of [6, 14, 22]) {
-      const band = new THREE.Mesh(new THREE.TorusGeometry(R + 0.1, 0.3, 10, 28), dark);
-      band.rotation.x = Math.PI / 2; band.position.set(R, R + y, 0);
-      g.add(band);
+    const R = 2.4;
+    // painted steel with brush streaks, rivet shadows and rust bleeding from the seams
+    const steelTex = canvasTexture(512, 512, (g, w, h) => {
+      g.fillStyle = '#7c8a94'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 2500; i++) {              // brushed streaks
+        g.fillStyle = `rgba(${rand(90, 170) | 0},${rand(100, 180) | 0},${rand(110, 190) | 0},0.18)`;
+        g.fillRect(Math.random() * w, Math.random() * h, 1, rand(6, 40));
+      }
+      for (let i = 0; i < 70; i++) {                // rust blotches
+        const x = Math.random() * w, y = Math.random() * h, r = rand(6, 28);
+        const gr = g.createRadialGradient(x, y, 0, x, y, r);
+        gr.addColorStop(0, 'rgba(150,80,40,0.55)'); gr.addColorStop(1, 'rgba(150,80,40,0)');
+        g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+      }
+      for (let i = 0; i < 25; i++) {                // rust drips
+        const x = Math.random() * w, y = Math.random() * h * 0.7;
+        const gr = g.createLinearGradient(0, y, 0, y + 80);
+        gr.addColorStop(0, 'rgba(140,70,30,0.5)'); gr.addColorStop(1, 'rgba(140,70,30,0)');
+        g.fillStyle = gr; g.fillRect(x, y, rand(2, 5), 80);
+      }
+    });
+    steelTex.wrapS = steelTex.wrapT = THREE.RepeatWrapping; steelTex.repeat.set(2, 2);
+    const steel = new THREE.MeshStandardMaterial({ map: steelTex, metalness: 0.55, roughness: 0.5 });
+    const iron = new THREE.MeshStandardMaterial({ color: 0x3a4148, metalness: 0.7, roughness: 0.45 });
+    const brass = new THREE.MeshStandardMaterial({ color: 0xc9a227, metalness: 0.8, roughness: 0.35 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x0b1116, roughness: 0.9 });
+
+    // bolted flange ring
+    function flange(radius, y, group, rotX = Math.PI / 2, pos = [0, 0, 0]) {
+      const f = new THREE.Group();
+      f.add(new THREE.Mesh(new THREE.CylinderGeometry(radius + 0.55, radius + 0.55, 0.5, 32), iron));
+      for (let i = 0; i < 10; i++) {
+        const a = i / 10 * Math.PI * 2;
+        const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.7, 6), iron);
+        bolt.position.set(Math.cos(a) * (radius + 0.32), 0, Math.sin(a) * (radius + 0.32));
+        f.add(bolt);
+      }
+      f.position.set(pos[0], y, pos[2]); f.rotation.x = rotX - Math.PI / 2; f.rotation.z = 0;
+      group.add(f);
+      return f;
     }
-    g.position.set(PIPE.x + 4, PIPE.y, PIPE.z);
-    scene.add(g);
+
+    // vertical run: comes down from above the view to the elbow
+    const vert = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 34, 32), steel);
+    vert.position.set(R, 17 + R, 0); pipe.add(vert);
+    flange(R, R + 4, pipe, Math.PI / 2, [R, 0, 0]);
+    flange(R, R + 15, pipe, Math.PI / 2, [R, 0, 0]);
+    flange(R, R + 26, pipe, Math.PI / 2, [R, 0, 0]);
+    // wall bracket / chain hanger near the top
+    const strap = new THREE.Mesh(new THREE.TorusGeometry(R + 0.3, 0.25, 8, 32), iron);
+    strap.rotation.x = Math.PI / 2; strap.position.set(R, R + 30, 0); pipe.add(strap);
+
+    // elbow: quarter torus, centre at the corner so both ends meet the straight runs exactly
+    const elbow = new THREE.Mesh(new THREE.TorusGeometry(R, R, 20, 28, Math.PI / 2), steel);
+    elbow.rotation.z = -Math.PI / 2; elbow.position.set(0, R, 0); pipe.add(elbow);   // arc from the vertical run's foot (R,R) to the spout end (0,0)
+
+    // short horizontal spout, flange, then the bell-mouth nozzle opening toward -x
+    const spout = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 3.2, 32), steel);
+    spout.rotation.z = Math.PI / 2; spout.position.set(-1.6, 0, 0); pipe.add(spout);
+    const sf = flange(R, 0, pipe, 0, [-3.0, 0, 0]); sf.rotation.set(0, 0, Math.PI / 2);
+    nozzle = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.55, R, 2.6, 32, 1, true), steel);
+    nozzle.material = steel.clone(); nozzle.material.side = THREE.DoubleSide;
+    nozzle.rotation.z = Math.PI / 2; nozzle.position.set(-4.6, 0, 0); pipe.add(nozzle);
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(R * 1.55, 0.3, 10, 40), iron);
+    lip.rotation.y = Math.PI / 2; lip.position.set(-5.9, 0, 0); pipe.add(lip);
+    // dark throat and a glow ring that lights up on arrivals
+    throat = new THREE.Mesh(new THREE.CircleGeometry(R * 0.98, 32), dark);
+    throat.rotation.y = -Math.PI / 2; throat.position.set(-3.6, 0, 0); pipe.add(throat);
+    glowRing = new THREE.Mesh(new THREE.RingGeometry(R * 0.55, R * 1.5, 40),
+      new THREE.MeshBasicMaterial({ color: 0x9ff3ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    glowRing.rotation.y = -Math.PI / 2; glowRing.position.set(-5.6, 0, 0); pipe.add(glowRing);
+
+    // valve wheel on the vertical run
+    const valve = new THREE.Group();
+    valve.position.set(R - R - 0.2, R + 9, 0);            // sticks out toward -x (into the tank)
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 2.2, 10), iron);
+    stem.rotation.z = Math.PI / 2; stem.position.x = -0.9; valve.add(stem);
+    valveWheel = new THREE.Group(); valveWheel.position.x = -2.1;
+    valveWheel.add(new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.22, 10, 32), brass));
+    for (let i = 0; i < 4; i++) {
+      const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 3.0, 6), brass);
+      spoke.rotation.z = i * Math.PI / 4; valveWheel.add(spoke);
+    }
+    valveWheel.add(new THREE.Mesh(new THREE.SphereGeometry(0.4, 12, 10), brass));
+    valveWheel.rotation.y = Math.PI / 2;                   // wheel faces -x
+    valve.add(valveWheel); pipe.add(valve);
+
+    // pressure gauge
+    const gauge = new THREE.Group(); gauge.position.set(-0.1, R + 3.2, 1.6); gauge.rotation.y = -0.6;
+    const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.5, 24), brass);
+    dial.rotation.z = Math.PI / 2; gauge.add(dial);
+    const face = new THREE.Mesh(new THREE.CircleGeometry(0.72, 24), new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.6 }));
+    face.rotation.y = -Math.PI / 2; face.position.x = -0.26; gauge.add(face);
+    gaugeNeedle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.6, 0.05), new THREE.MeshStandardMaterial({ color: 0xc0392b }));
+    gaugeNeedle.position.set(-0.3, 0.2, 0); gaugeNeedle.rotation.x = 0.6; gauge.add(gaugeNeedle);
+    pipe.add(gauge);
+
+    pipe.position.set(PIPE.x + 4, PIPE.y, PIPE.z);
+    pipe.userData.base = pipe.position.clone();
+    scene.add(pipe);
+  }
+
+  // arrival blast: called when a creature is pushed out of the pipe
+  const ringGeo = new THREE.TorusGeometry(1, 0.05, 8, 48);
+  function pipeArrival() {
+    pipeFX.t0 = performance.now() / 1000;
+    for (let i = 0; i < 3; i++) {
+      const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xcdf7ff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
+      m.rotation.y = Math.PI / 2; m.position.set(PIPE.x - 1.5, PIPE.y, PIPE.z);
+      m.userData = { born: pipeFX.t0 + i * 0.22 };
+      scene.add(m); pipeFX.rings.push(m);
+    }
+    for (let i = 0; i < 26; i++) {
+      const st = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 }));
+      st.scale.set(rand(3, 7), 1, 1);
+      st.position.set(PIPE.x - 1, PIPE.y + rand(-1.6, 1.6), PIPE.z + rand(-1.6, 1.6));
+      st.userData = { v: new THREE.Vector3(-rand(18, 34), rand(-4, 4), rand(-4, 4)), born: pipeFX.t0 + rand(0, 0.35) };
+      scene.add(st); pipeFX.streaks.push(st);
+    }
+    pipeBurst(40);
+  }
+
+  function updatePipeFX(t, dt) {
+    const e = t - pipeFX.t0;
+    // shudder: fast decaying shake for ~1.5 s, then settle
+    const shake = e < 1.6 ? Math.exp(-e * 2.2) * 0.35 : 0;
+    pipe.position.copy(pipe.userData.base).add(new THREE.Vector3(Math.sin(t * 60) * shake, Math.cos(t * 47) * shake * 0.5, Math.sin(t * 53) * shake * 0.5));
+    // valve spins hard on arrival, idles slowly otherwise
+    valveWheel.rotation.x += (e < 2.2 ? 9 * Math.exp(-e * 1.2) : 0.25) * dt;
+    // gauge needle kicks into the red then eases back
+    gaugeNeedle.rotation.x = 0.6 + (e < 3 ? 1.6 * Math.exp(-e * 1.5) * (0.6 + 0.4 * Math.sin(t * 30)) : 0);
+    // throat glow
+    glowRing.material.opacity = e < 2.0 ? Math.max(0, 0.9 * Math.exp(-e * 1.6) * (0.7 + 0.3 * Math.sin(t * 25))) : 0;
+    nozzle.scale.setScalar(1 + (e < 1.2 ? 0.08 * Math.sin(e * 14) * Math.exp(-e * 2.5) : 0));
+    // expanding rings
+    for (let i = pipeFX.rings.length - 1; i >= 0; i--) {
+      const m = pipeFX.rings[i], a = t - m.userData.born;
+      if (a < 0) continue;
+      const s = 1 + a * 9;
+      m.scale.set(1, s, s); m.position.x = PIPE.x - 1.5 - a * 10;
+      m.material.opacity = Math.max(0, 0.8 * (1 - a / 1.3));
+      if (a > 1.3) { scene.remove(m); m.material.dispose(); pipeFX.rings.splice(i, 1); }
+    }
+    // streaks shoot out and fade
+    for (let i = pipeFX.streaks.length - 1; i >= 0; i--) {
+      const m = pipeFX.streaks[i], a = t - m.userData.born;
+      if (a < 0) continue;
+      m.position.addScaledVector(m.userData.v, dt);
+      m.userData.v.multiplyScalar(1 - 2.5 * dt);
+      m.material.opacity = Math.max(0, 0.9 * (1 - a / 0.9));
+      if (a > 0.9) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); pipeFX.streaks.splice(i, 1); }
+    }
   }
 
   // -------------------------------------------------------------- creatures
@@ -263,7 +394,7 @@
       c.vel.set(-spec.speed * 1.4, 0, 0);
       c.target.set(rand(-10, 8), rand(8, 16), rand(-14, 2));
       c.nextTarget = now + 5;
-      pipeBurst(28);
+      pipeArrival();
     } else {
       mesh.position.set(rand(-TANK.x, TANK.x), rand(TANK.yMin, TANK.yMax), rand(TANK.zMin, TANK.zMax));
       pickTarget(c, { stayIn: true });
@@ -448,6 +579,7 @@
         else { b.position.y = 0; b.position.x = rand(-40, 40); b.position.z = rand(-40, 8); }
       }
     }
+    updatePipeFX(t, dt);
     pipeIdle -= dt;
     if (pipeIdle < 0) { spawnBubble(PIPE.x, PIPE.y + rand(-1, 1), PIPE.z + rand(-1, 1), rand(0.1, 0.3), rand(2, 4)); pipeIdle = rand(0.4, 2.5); }
 
