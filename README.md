@@ -137,8 +137,8 @@ OpenCV), generates the sheets, and starts two services:
   sprite images straight from disk with gzip and caching, accepts uploads up to 30 MB, and
   proxies `/api/` to the app. Config: `deploy/nginx-sketch-aquarium.conf`.
 
-Settings live in `deploy/env`: `PORT`, `BIND`, `TTL`, `PUBLIC_URL` (shown on the tank and
-scan page) and `ADMIN_KEY`. Edit, then `systemctl restart sketch-aquarium`.
+Settings live in `deploy/env`: `PORT`, `BIND`, `TTL`, `PUBLIC_URL` (optional override; by
+default the pages use whatever address the browser opened them with) and `ADMIN_KEY`. Edit, then `systemctl restart sketch-aquarium`.
 
 HAProxy: point the `anime.monagadu.com` backend at `192.168.201.222:80`; see
 `deploy/haproxy-snippet.cfg`. If `PUBLIC_URL` is left empty the app derives the address

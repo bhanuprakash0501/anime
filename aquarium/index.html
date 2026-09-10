@@ -19,9 +19,16 @@
 <div id="hint">Color a sea creature, then take its photo on your phone!</div>
 <div id="scanurl"></div>
 <script>
-  fetch('/api/info').then(r => r.json()).then(i => {
-    document.getElementById('scanurl').innerHTML = 'Scan your drawing at <b>' + i.scan_url + '</b>';
-  }).catch(() => {});
+  // The scan link is relative to wherever this page was opened from. Only when the
+  // tank is opened as localhost (the projector PC itself) do we ask the server for
+  // an address phones can actually reach.
+  (function () {
+    const el = document.getElementById('scanurl');
+    const show = url => { el.innerHTML = 'Scan your drawing at <b>' + url + '</b>'; };
+    const local = /^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(location.hostname);
+    if (!local) { show(location.origin + '/scan'); return; }
+    fetch('/api/info').then(r => r.json()).then(i => show(i.scan_url)).catch(() => show(location.origin + '/scan'));
+  })();
 </script>
 <script src="vendor/three.min.js"></script>
 <script src="models.js"></script>
