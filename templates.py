@@ -75,11 +75,20 @@ def decode_bits(bits):
 
 
 def _font(size, bold=False):
-    for f in (["arialbd.ttf", "arial.ttf"] if bold else ["arial.ttf"]):
-        p = os.path.join(os.environ.get("WINDIR", "C:/Windows"), "Fonts", f)
+    """A real TrueType font on Windows, macOS or Linux (Arial / DejaVu / Liberation)."""
+    win = os.path.join(os.environ.get("WINDIR", "C:/Windows"), "Fonts")
+    candidates = ([os.path.join(win, "arialbd.ttf"), "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                   "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", "/System/Library/Fonts/Supplemental/Arial Bold.ttf"]
+                  if bold else []) + \
+                 [os.path.join(win, "arial.ttf"), "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                  "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "/System/Library/Fonts/Supplemental/Arial.ttf"]
+    for p in candidates:
         if os.path.exists(p):
             return ImageFont.truetype(p, size)
-    return ImageFont.load_default()
+    try:
+        return ImageFont.load_default(size=size)      # Pillow >= 10.1 scalable fallback
+    except TypeError:
+        return ImageFont.load_default()
 
 
 def art_transform():
