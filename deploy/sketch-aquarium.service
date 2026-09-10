@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 WorkingDirectory=/opt/sketch_aquarium
 EnvironmentFile=-/opt/sketch_aquarium/deploy/env
-ExecStart=/opt/sketch_aquarium/.venv/bin/python -u /opt/sketch_aquarium/app.py --port ${PORT} --ttl ${TTL} --public-url ${PUBLIC_URL} --admin-key ${ADMIN_KEY}
+ExecStart=/opt/sketch_aquarium/.venv/bin/python -u /opt/sketch_aquarium/app.py --port ${PORT} --bind ${BIND} --ttl ${TTL} --public-url ${PUBLIC_URL} --admin-key ${ADMIN_KEY}
 Restart=always
 RestartSec=3
 # OpenCV can spin many threads on a small container; keep it polite

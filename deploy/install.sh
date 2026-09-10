@@ -9,7 +9,7 @@ echo "== packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 # python + venv, and the shared libraries opencv-python needs on a headless Debian
-apt-get install -y -qq python3 python3-venv python3-pip libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 fonts-dejavu-core curl >/dev/null
+apt-get install -y -qq python3 python3-venv python3-pip libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 fonts-dejavu-core curl nginx >/dev/null
 
 echo "== python environment"
 if [ ! -x .venv/bin/python ]; then python3 -m venv .venv; fi
@@ -39,6 +39,14 @@ else
   echo "started with nohup (no systemd); log: /var/log/sketch-aquarium.log"
   sleep 2
 fi
+
+echo "== nginx"
+cp deploy/nginx-sketch-aquarium.conf /etc/nginx/sites-available/sketch-aquarium
+ln -sf /etc/nginx/sites-available/sketch-aquarium /etc/nginx/sites-enabled/sketch-aquarium
+rm -f /etc/nginx/sites-enabled/default
+# nginx runs as www-data and must read the sprites the app writes
+chmod 755 /opt /opt/sketch_aquarium /opt/sketch_aquarium/sprites /opt/sketch_aquarium/aquarium
+nginx -t && systemctl enable nginx >/dev/null && systemctl restart nginx
 
 echo "== check"
 curl -s -o /dev/null -w "local http %{http_code}\n" "http://127.0.0.1:${PORT}/" || true

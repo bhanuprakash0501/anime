@@ -128,12 +128,19 @@ camera preview instead of the camera-app picker.
 ```
 
 `deploy.py` copies the project to `/opt/sketch_aquarium` and runs `deploy/install.sh`,
-which installs Python and the OpenCV system libraries, builds the venv (headless OpenCV),
-generates the sheets, and starts the app as a systemd service (or with nohup if the
-container has no systemd). Settings live in `deploy/env`: `PORT` (8000), `TTL`,
-`PUBLIC_URL` (shown on the tank and scan page) and `ADMIN_KEY`.
+which installs Python, the OpenCV system libraries and nginx, builds the venv (headless
+OpenCV), generates the sheets, and starts two services:
 
-HAProxy: point the `anime.monagadu.com` backend at `192.168.201.222:8000`; see
+* `sketch-aquarium` (systemd): the Python app, bound to `127.0.0.1:8000` only. It handles
+  the dynamic parts: photo scanning, the live creature list, admin actions.
+* `nginx` on port 80: serves the tank, scan and admin pages, the three.js library and the
+  sprite images straight from disk with gzip and caching, accepts uploads up to 30 MB, and
+  proxies `/api/` to the app. Config: `deploy/nginx-sketch-aquarium.conf`.
+
+Settings live in `deploy/env`: `PORT`, `BIND`, `TTL`, `PUBLIC_URL` (shown on the tank and
+scan page) and `ADMIN_KEY`. Edit, then `systemctl restart sketch-aquarium`.
+
+HAProxy: point the `anime.monagadu.com` backend at `192.168.201.222:80`; see
 `deploy/haproxy-snippet.cfg`. If `PUBLIC_URL` is left empty the app derives the address
 from the `X-Forwarded-Proto` / `Host` headers instead.
 

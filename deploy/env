@@ -1,5 +1,7 @@
 # Settings for the Sketch Aquarium service (read by systemd / start.sh)
 PORT=8000
+# 127.0.0.1 = only nginx on this box can reach the app; 0.0.0.0 = expose it directly
+BIND=127.0.0.1
 TTL=120
 PUBLIC_URL=https://anime.monagadu.com
 ADMIN_KEY=

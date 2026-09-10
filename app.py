@@ -279,10 +279,10 @@ def inbox_loop():
         time.sleep(1.0)
 
 
-def serve(port):
+def serve(port, bind="0.0.0.0"):
     ThreadingHTTPServer.request_queue_size = 64      # a roomful of phones, not the default 5
     ThreadingHTTPServer.daemon_threads = True
-    srv = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    srv = ThreadingHTTPServer((bind, port), Handler)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
     base = PUBLIC_URL or f"http://{lan_ip()}:{port}"
@@ -395,6 +395,7 @@ def camera_loop(cam_index, width, height):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--bind", default=os.environ.get("BIND", "0.0.0.0"), help="address to listen on; 127.0.0.1 when nginx is in front")
     ap.add_argument("--camera", type=int, default=0)
     ap.add_argument("--width", type=int, default=1280)
     ap.add_argument("--height", type=int, default=720)
@@ -416,7 +417,7 @@ def main():
     if a.clear:
         clear_aquarium()
     os.makedirs(scanner.SPRITES_DIR, exist_ok=True)
-    serve(a.port)
+    serve(a.port, a.bind)
     threading.Thread(target=inbox_loop, daemon=True).start()
     print(f"Inbox: drop photos of colored sheets into {INBOX} to add them")
     for p in a.image or []:
