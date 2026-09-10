@@ -351,7 +351,7 @@
     if (!tex) return;
     const nameTex = entry.name ? await loadTex(BASE + entry.name) : null;
     const spec = SPEC[entry.motion] || SPEC.swim;
-    const model = SketchModels.build(entry.species, tex);
+    const model = await SketchModels.buildAsync(entry.species, tex, BASE);
     const mesh = model.group;                      // the whole rig moves as one object
     const size = spec.size;
     mesh.scale.setScalar(size);
@@ -510,10 +510,16 @@
     }
   }
 
+  // optional real 3D models (see models/manifest.json); loaded before the first creature
+  const manifestReady = fetch(BASE + '/models/manifest.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : {}).catch(() => ({}))
+    .then(mf => SketchModels.setManifest(mf));
+
   // ------------------------------------------------------------------ polling
   // ?pipe=1 makes even the creatures present at page load enter through the pipe (handy for testing)
   let firstPoll = !/[?&]pipe=1/.test(location.search);
   async function poll() {
+    await manifestReady;
     try {
       const r = await fetch(BASE + '/api/sprites', { cache: 'no-store' });
       const list = await r.json();

@@ -13,3 +13,6 @@ species_preview.png
 # large media
 *.mov
 *.mp4
+
+# local test models only; real models are committed
+aquarium/models/_test_*

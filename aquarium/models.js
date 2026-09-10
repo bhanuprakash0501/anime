@@ -633,8 +633,94 @@ window.SketchModels = (() => {
     crab: buildCrab,
   };
 
+  // =========================================================== glTF models
+  // Real (artist-made or scanned) models replace the procedural rigs when listed in
+  // models/manifest.json:
+  //   { "shark": { "file": "shark.glb", "plane": "side", "rotateY": 90, "keep": ["eye"], "clip": "swim", "speed": 1 } }
+  // file     - relative to aquarium/models/
+  // plane    - how the child's drawing is projected onto it: side (fish), top (turtle/ray/crab), front
+  // rotateY  - degrees to turn the model so its head points +x (the tank's forward axis)
+  // keep     - mesh/material name fragments that keep their own material (eyes, teeth)
+  // clip     - animation clip to play (default: the first one); speed - playback multiplier
+  let manifest = {};
+  const bufferCache = {};
+  function setManifest(mf) { manifest = mf || {}; }
+
+  function loadBuffer(url) {
+    if (!bufferCache[url]) bufferCache[url] = fetch(url).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); });
+    return bufferCache[url];
+  }
+
+  async function buildFromGltf(spec, tex, base) {
+    if (!T.GLTFLoader) return null;
+    const buf = await loadBuffer(base + '/models/' + spec.file);
+    const gltf = await new Promise((res, rej) => new T.GLTFLoader().parse(buf.slice(0), base + '/models/', res, rej));
+    const root = gltf.scene;
+    const g = new T.Group();
+    const holder = new T.Group();
+    holder.rotation.y = (spec.rotateY || 0) * PI / 180;
+    holder.add(root);
+    g.add(holder);
+
+    // normalise: centre on the origin and scale so the body is ~1 unit long along x
+    g.updateMatrixWorld(true);
+    const box = new T.Box3().setFromObject(g);
+    const size = new T.Vector3(); box.getSize(size);
+    const centre = new T.Vector3(); box.getCenter(centre);
+    const s = (spec.scale || 1) / Math.max(size.x, 1e-6);
+    holder.position.sub(centre).multiplyScalar(s);
+    holder.scale.setScalar(s);
+    holder.position.add(new T.Vector3().copy(centre).multiplyScalar(-0).add(new T.Vector3(0, 0, 0)));
+    // recompute after scaling
+    g.updateMatrixWorld(true);
+    const box2 = new T.Box3().setFromObject(g); const size2 = new T.Vector3(); box2.getSize(size2);
+    const c2 = new T.Vector3(); box2.getCenter(c2); holder.position.sub(c2);
+
+    // skin: every mesh not in the keep list gets the drawing, projected like the procedural rigs
+    const keep = (spec.keep || ['eye', 'pupil', 'tooth', 'teeth']).map(k => k.toLowerCase());
+    const skinMat = skinMaterial(tex, spec.bump || null, spec.bumpScale || 0.004, { roughness: 0.6, side: T.DoubleSide });
+    root.traverse(o => {
+      if (!o.isMesh) return;
+      const name = (o.name + ' ' + (o.material && o.material.name || '')).toLowerCase();
+      if (keep.some(k => name.includes(k))) return;
+      if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();   // some exports ship without normals -> black
+      o.material = skinMat;
+      o.userData.skin = true;
+      o.frustumCulled = false;
+    });
+    projectUVs(g, spec.plane || 'side');
+
+    // animation: play a clip from the file if it has one, else a gentle procedural sway
+    let mixer = null, lastT = null;
+    const clips = gltf.animations || [];
+    if (clips.length) {
+      mixer = new T.AnimationMixer(root);
+      const clip = clips.find(c => c.name === spec.clip) || clips[0];
+      mixer.clipAction(clip).play();
+    } else {
+      root.traverse(o => { if (o.isMesh && o.userData.skin && !o.isSkinnedMesh) rememberBase(o); });
+    }
+    return {
+      group: g, height: size2.y, width: size2.x, faces: 'x', external: true,
+      anim(t, o) {
+        const dt = lastT == null ? 0 : Math.min(0.1, t - lastT); lastT = t;
+        if (mixer) mixer.update(dt * (spec.speed || 1) * (0.7 + 0.3 * o.speedFactor));
+        else root.traverse(m => { if (m.isMesh && m.userData.base) bendBody(m, t, 4 * o.speedFactor, 0.03, o.phase, 0.5); });
+      },
+    };
+  }
+
   return {
     build(species, texture) { return (BUILDERS[species] || BUILDERS.clownfish)(texture); },
+    async buildAsync(species, texture, base) {
+      const spec = manifest[species];
+      if (spec && spec.file) {
+        try { const r = await buildFromGltf(spec, texture, base || ''); if (r) return r; }
+        catch (e) { console.warn('glTF model for', species, 'failed, using procedural rig:', e); }
+      }
+      return this.build(species, texture);
+    },
+    setManifest,
     has(species) { return !!BUILDERS[species]; },
   };
 })();

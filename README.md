@@ -47,6 +47,18 @@ creature swims into a projected aquarium with the name floating above it.
   squeeze), upright (sway), crawl (floor scuttle). A submarine pipe at the top right pumps
   every newly scanned creature into the tank with a burst of bubbles. Open `?pipe=1` to see
   all creatures enter through the pipe on load.
+* **Real 3D models (optional).** Any species can use an artist-made or scanned glTF model
+  instead of its procedural rig: put the `.glb` in `aquarium/models/` and list it in
+  `aquarium/models/manifest.json` (see `manifest.example.json`): file, projection plane for
+  the drawing (`side`, `top` or `front`), a `rotateY` so the head points +x, name fragments
+  of parts that keep their own material (`keep`, e.g. eyes and teeth), and an animation
+  `clip` to play if the file has one. The child's coloring is projected onto the model as
+  its skin exactly as for the procedural rigs; a model with a swim animation is played, one
+  without gets a gentle procedural sway. Species not listed keep the procedural rig, and a
+  model that fails to load falls back to it too. Good sources: Sketchfab (filter by
+  downloadable + CC licence; many realistic fish, sharks, turtles, rays, octopuses),
+  the Smithsonian 3D collection (CC0 scans), Poly Pizza (CC-BY low-poly). Keep files
+  under about 5 MB each; the tank loads one copy per creature.
 * `aquarium/scenery.js` builds the reef: noise-displaced boulders with a mottled stone
   texture, three rock formations with dark cave mouths, tufts of tapered swaying sea grass,
   tall kelp, and corals (branching staghorn, brain coral, sea fans, tube sponges, waving
