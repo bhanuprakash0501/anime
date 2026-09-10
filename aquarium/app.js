@@ -351,7 +351,7 @@
     if (!tex) return;
     const nameTex = entry.name ? await loadTex(BASE + entry.name) : null;
     const spec = SPEC[entry.motion] || SPEC.swim;
-    const model = await SketchModels.buildAsync(entry.species, tex, BASE);
+    const model = await SketchModels.buildAsync(entry.species, tex, BASE, entry.motion);
     const mesh = model.group;                      // the whole rig moves as one object
     const size = spec.size;
     mesh.scale.setScalar(size);

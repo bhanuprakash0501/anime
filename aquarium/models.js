@@ -633,6 +633,64 @@ window.SketchModels = (() => {
     crab: buildCrab,
   };
 
+  // ---------------------------------------------- procedural motion for static models
+  // Works in the mesh's own space: y is up; the longer horizontal axis is the body axis.
+  function prepareDeform(mesh) {
+    const g = mesh.geometry;
+    g.computeBoundingBox();
+    const b = g.boundingBox, size = new T.Vector3(); b.getSize(size);
+    const c = new T.Vector3(); b.getCenter(c);
+    mesh.userData.deform = {
+      base: g.attributes.position.array.slice(), c, size,
+      axis: size.x >= size.z ? 0 : 2,           // index of the body-length axis (x or z)
+    };
+  }
+
+  function deformExternal(mesh, t, motion, o) {
+    const d = mesh.userData.deform, pos = mesh.geometry.attributes.position, a = pos.array, b = d.base;
+    const hx = Math.max(d.size.x, 1e-6) / 2, hy = Math.max(d.size.y, 1e-6) / 2, hz = Math.max(d.size.z, 1e-6) / 2;
+    const lenI = d.axis, latI = d.axis === 0 ? 2 : 0;                 // length axis, lateral axis
+    const hl = lenI === 0 ? hx : hz, hw = latI === 0 ? hx : hz;
+    const sp = o.speedFactor, ph = o.phase;
+    const p = Math.sin(t * 1.6 + ph);                                  // pulse phase (jellyfish / octopus)
+    for (let i = 0; i < a.length; i += 3) {
+      const x = b[i], y = b[i + 1], z = b[i + 2];
+      const ny = (y - d.c.y) / hy;                                     // -1 bottom .. 1 top
+      const nl = ((lenI === 0 ? x : z) - (lenI === 0 ? d.c.x : d.c.z)) / hl;   // -1 tail .. 1 head (sign unknown, fine)
+      const nw = ((latI === 0 ? x : z) - (latI === 0 ? d.c.x : d.c.z)) / hw;   // -1 .. 1 side to side
+      let dx = 0, dy = 0, dz = 0;
+      if (motion === 'pulse') {
+        // bell squeezes and lifts; everything hanging below trails in a wave
+        if (ny > 0.15) { const k = (ny - 0.15) / 0.85; dx += (x - d.c.x) * (-p * 0.07 * k); dz += (z - d.c.z) * (-p * 0.07 * k); dy += (y - d.c.y) * (p * 0.06); }
+        else { const depth = (0.15 - ny) / 1.15; const w = Math.sin(t * 2.2 + ph - depth * 5) * 0.05 * hw * depth; dx += w; dz += Math.cos(t * 1.7 + ph - depth * 4) * 0.04 * hw * depth; dy += -p * 0.03 * hy * depth; }
+      } else if (motion === 'crawl') {
+        // legs (low and out to the sides) step in two alternating groups; body bobs
+        const leg = ny < -0.05 && Math.abs(nw) > 0.3;
+        const grp = (nw > 0 ? 0 : Math.PI) + (nl > 0 ? 0 : Math.PI);
+        if (leg) { const k = Math.min(1, (Math.abs(nw) - 0.3) / 0.5) * Math.min(1, (-0.05 - ny) / 0.6); dy += Math.max(0, Math.sin(t * 9 * sp + ph + grp)) * 0.14 * hy * k; }
+        dy += Math.abs(Math.sin(t * 9 * sp + ph)) * 0.02 * hy;
+      } else if (motion === 'swim_slow') {
+        // flippers / limbs out to the sides stroke up and down; slight body undulation
+        const k = Math.max(0, (Math.abs(nw) - 0.4) / 0.6);
+        dy += Math.sin(t * 2.2 * sp + ph - Math.abs(nw) * 1.5) * 0.18 * hy * k * k;
+        const tail = Math.max(0, -nl);
+        if (latI === 0) dx += Math.sin(t * 2.2 * sp + ph) * 0.02 * hw * tail; else dz += Math.sin(t * 2.2 * sp + ph) * 0.02 * hw * tail;
+      } else if (motion === 'upright') {
+        // gentle sway that grows with height, tail (bottom) curls, fin area flutters
+        const sway = Math.sin(t * 1.4 + ph + ny * 1.2) * 0.03 * hw * (0.4 + 0.6 * Math.abs(ny));
+        if (latI === 0) dx += sway; else dz += sway;
+        if (ny < -0.35) { const k = (-0.35 - ny) / 0.65; const cur = Math.sin(t * 2.6 + ph - k * 3) * 0.06 * hl * k; if (lenI === 0) dx += cur; else dz += cur; }
+      } else {
+        // generic fish: side-to-side tail wag growing toward the tail end
+        const k = Math.max(0, -nl) ; const wag = Math.sin(t * 6 * sp + ph - k * 3) * 0.06 * hw * k * k;
+        if (latI === 0) dx += wag; else dz += wag;
+      }
+      a[i] = x + dx; a[i + 1] = y + dy; a[i + 2] = z + dz;
+    }
+    pos.needsUpdate = true;
+    mesh.geometry.computeVertexNormals();
+  }
+
   // =========================================================== glTF models
   // Real (artist-made or scanned) models replace the procedural rigs when listed in
   // models/manifest.json:
@@ -651,7 +709,7 @@ window.SketchModels = (() => {
     return bufferCache[url];
   }
 
-  async function buildFromGltf(spec, tex, base) {
+  async function buildFromGltf(spec, tex, base, motion) {
     if (!T.GLTFLoader) return null;
     const buf = await loadBuffer(base + '/models/' + spec.file);
     const gltf = await new Promise((res, rej) => new T.GLTFLoader().parse(buf.slice(0), base + '/models/', res, rej));
@@ -697,27 +755,33 @@ window.SketchModels = (() => {
     const clips = gltf.animations || [];
     if (clips.length) {
       mixer = new T.AnimationMixer(root);
-      const clip = clips.find(c => c.name === spec.clip) || clips[0];
+      const lower = c => c.name.toLowerCase();
+      const bad = c => /bite|attack|death|die|hurt|out_of_water|impulse/.test(lower(c));
+      let clip = spec.clip && clips.find(c => lower(c).includes(spec.clip.toLowerCase()));
+      if (!clip) clip = clips.find(c => /swimming_normal|swim_normal|idle/.test(lower(c)) && !bad(c));
+      if (!clip) clip = clips.find(c => /swim|fly|move|walk/.test(lower(c)) && !bad(c) && !/fast/.test(lower(c)));
+      if (!clip) clip = clips.find(c => !bad(c)) || clips[0];
+      console.info('model clip for', spec.file + ':', clip.name);
       mixer.clipAction(clip).play();
     } else {
-      root.traverse(o => { if (o.isMesh && o.userData.skin && !o.isSkinnedMesh) rememberBase(o); });
+      root.traverse(o => { if (o.isMesh && o.userData.skin && !o.isSkinnedMesh) prepareDeform(o); });
     }
     return {
       group: g, height: size2.y, width: size2.x, faces: 'x', external: true,
       anim(t, o) {
         const dt = lastT == null ? 0 : Math.min(0.1, t - lastT); lastT = t;
         if (mixer) mixer.update(dt * (spec.speed || 1) * (0.7 + 0.3 * o.speedFactor));
-        else root.traverse(m => { if (m.isMesh && m.userData.base) bendBody(m, t, 4 * o.speedFactor, 0.03, o.phase, 0.5); });
+        else root.traverse(m => { if (m.isMesh && m.userData.deform) deformExternal(m, t, motion, o); });
       },
     };
   }
 
   return {
     build(species, texture) { return (BUILDERS[species] || BUILDERS.clownfish)(texture); },
-    async buildAsync(species, texture, base) {
+    async buildAsync(species, texture, base, motion) {
       const spec = manifest[species];
       if (spec && spec.file) {
-        try { const r = await buildFromGltf(spec, texture, base || ''); if (r) return r; }
+        try { const r = await buildFromGltf(spec, texture, base || '', motion || 'swim'); if (r) return r; }
         catch (e) { console.warn('glTF model for', species, 'failed, using procedural rig:', e); }
       }
       return this.build(species, texture);
