@@ -39,7 +39,8 @@ creature swims into a projected aquarium with the name floating above it.
   arms and tentacles; an octopus with eight jointed curling arms and suckers; and a crab with
   eye stalks, opening pincers and eight walking legs. The child's coloring is projected onto
   each model as its skin (side view for fish, top view for turtle/ray/crab, front for the
-  rest). Open `?showcase=1` (optionally `&only=crab,shark`) to review the models up close.
+  rest). Open `?showcase=1` (optionally `&only=crab,shark`) to review the models up close,
+  and add `&tilt=1` for an overhead view (ray, turtle, crab).
   Creatures move in x, y and depth, turn through the water,
   cross the screen, sometimes swim out of frame and come back a few seconds later, and fade
   into the fog when far away. Motion types: swim (tail wag), glide (wing flap), pulse (bell

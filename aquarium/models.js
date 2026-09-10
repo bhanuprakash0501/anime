@@ -115,6 +115,8 @@ window.SketchModels = (() => {
     const box = new T.Box3();
     const v = new T.Vector3();
     group.traverse(o => { if (o.isMesh && o.userData.skin) box.expandByObject(o); });
+    const ov = group.userData.uvBox;                  // optional override of the projection extent along x
+    if (ov) { if (ov.minX != null) box.min.x = ov.minX; if (ov.maxX != null) box.max.x = ov.maxX; }
     const size = new T.Vector3(); box.getSize(size);
     group.traverse(o => {
       if (!(o.isMesh && o.userData.skin)) return;
@@ -329,55 +331,96 @@ window.SketchModels = (() => {
   }
 
   // =================================================================== RAY
+  // Manta: swept wings with pointed tips (convex leading edge, concave trailing edge), a
+  // thick central body ridge, pale belly, side-mounted eyes, wide mouth between two
+  // forward-curling cephalic lobes, whip tail. Top carries the child's drawing with natural
+  // darkening toward the wing edges; the underside is creamy white like a real manta.
   function buildRay(tex) {
     const g = new T.Group();
-    const skin = skinMaterial(tex, 'skin', 0.002, { side: T.DoubleSide });
-    const nx = 44, nz = 28;
-    const hw = x => 0.56 * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(x * 2), 1.6)), 0.65);
-    const thick = (x, s) => 0.045 * Math.pow(Math.max(0, 1 - s * s), 1.4) * Math.sqrt(Math.max(0, 1 - Math.pow(x * 2, 2))) + 0.05 * Math.exp(-(s * 2.6) * (s * 2.6)) * Math.max(0, 1 - Math.pow(x * 2, 2)) + 0.003;
-    const pos = [], idx = [], uvs = [];
-    const V = (nx + 1) * (nz + 1);
-    for (let side = 0; side < 2; side++) for (let i = 0; i <= nx; i++) for (let j = 0; j <= nz; j++) {
-      const x = -0.5 + i / nx, s = -1 + 2 * j / nz;
-      const z = s * hw(x), y = (side ? -1 : 1) * thick(x, s);
-      pos.push(x, y, z); uvs.push(i / nx, j / nz);
+    const top = skinMaterial(tex, 'skin', 0.0025, { vertexColors: true, roughness: 0.6 });
+    const belly = new T.MeshStandardMaterial({ color: 0xf1ece2, roughness: 0.7, vertexColors: true });
+    // parts without a colour attribute need plain materials (vertexColors would render them black)
+    const topPlain = skinMaterial(tex, 'skin', 0.0025, { roughness: 0.6 });
+    const bellyPlain = new T.MeshStandardMaterial({ color: 0xe9e2d6, roughness: 0.7 });
+
+    const SPAN = 0.6;
+    const xle = s => 0.5 - 0.5 * Math.pow(s, 1.35);                       // leading edge: convex, head -> pointed tip at x~0
+    const xte = s => -0.32 + 0.30 * Math.pow(s, 1.1);                     // trailing edge: concave, meets the tip
+    const ridge = s => Math.exp(-(s * 2.4) * (s * 2.4));                  // central body mass
+    const thick = (s, u) => {
+      const chord = Math.pow(Math.sin(PI * clamp(u, 0, 1)), 0.7);
+      return (0.075 * ridge(s) + 0.012 * (1 - s * s)) * chord + 0.002;
+    };
+    const NS = 48, NU = 22;
+    const pos = [], idx = [], uvs = [], col = [];
+    const V = (NS + 1) * (NU + 1);
+    for (let side = 0; side < 2; side++) for (let i = 0; i <= NS; i++) for (let j = 0; j <= NU; j++) {
+      const s = -1 + 2 * i / NS, as = Math.abs(s), u = j / NU;
+      const x = xte(as) + (xle(as) - xte(as)) * u;
+      const z = s * SPAN * (0.35 + 0.65 * Math.pow(Math.sin(PI * u), 0.15));   // tips taper to a point
+      const th = thick(as, u);
+      const y = side === 0 ? th : -th * 0.55;
+      pos.push(x, y, z); uvs.push(u, i / NS);
+      // natural shading: top darkens toward the wing tips and trailing edge, belly stays bright
+      const shade = side === 0 ? 1 - 0.32 * Math.pow(as, 2.2) - 0.12 * (1 - u) : 0.92 + 0.08 * ridge(s);
+      col.push(shade, shade, shade);
     }
-    for (let side = 0; side < 2; side++) for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
-      const a = side * V + i * (nz + 1) + j, b = a + 1, c = a + nz + 1, d = c + 1;
+    for (let side = 0; side < 2; side++) for (let i = 0; i < NS; i++) for (let j = 0; j < NU; j++) {
+      const a = side * V + i * (NU + 1) + j, b = a + 1, c = a + NU + 1, d = c + 1;
       if (side) idx.push(a, b, c, b, d, c); else idx.push(a, c, b, b, c, d);
     }
     const geo = new T.BufferGeometry();
     geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
     geo.setAttribute('uv', new T.Float32BufferAttribute(uvs, 2));
-    geo.setIndex(idx); geo.computeVertexNormals();
-    const body = mesh(geo, skin); body.userData.skin = true; rememberBase(body); g.add(body);
+    geo.setAttribute('color', new T.Float32BufferAttribute(col, 3));
+    geo.setIndex(idx);
+    const nTop = NS * NU * 6;
+    geo.addGroup(0, nTop, 0); geo.addGroup(nTop, nTop, 1);
+    geo.computeVertexNormals();
+    const body = new T.Mesh(geo, [top, belly]);
+    body.userData.skin = true; rememberBase(body); g.add(body);
 
-    const tail = mesh(new T.CylinderGeometry(0.004, 0.016, 0.6, 8), skin, -0.78, 0, 0);
-    tail.rotation.z = -PI / 2; tail.userData.skin = true; g.add(tail);
+    // whip tail from the trailing edge centre, with a small fleshy base
+    const tailBase = mesh(new T.CylinderGeometry(0.02, 0.045, 0.16, 10), topPlain, -0.36, 0, 0);
+    tailBase.rotation.z = -PI / 2; tailBase.userData.skin = true; g.add(tailBase);
+    const tail = mesh(new T.CylinderGeometry(0.003, 0.02, 0.62, 8), bellyPlain, -0.74, 0, 0);
+    tail.rotation.z = -PI / 2; g.add(tail);
+
+    // cephalic lobes: paddle-shaped fins that curl forward and inward
     const lobes = [];
-    for (const s of [1, -1]) {
-      const l = mesh(fin([[0, 0.02], [0.1, 0.03], [0.14, 0.0], [0.1, -0.03], [0, -0.02]], 0.03), skin, 0.46, 0.0, s * 0.1);
-      l.rotation.y = -s * 0.5; l.userData.skin = true; g.add(l); lobes.push(l);
+    for (const sd of [1, -1]) {
+      const l = mesh(fin([[0, 0.0], [0.06, 0.035], [0.15, 0.04], [0.2, 0.02], [0.19, -0.02], [0.12, -0.035], [0.04, -0.03]], 0.035), topPlain, 0.44, 0.015, sd * 0.11);
+      l.rotation.y = -sd * 0.35; l.rotation.z = 0.25; l.userData.skin = true; g.add(l); lobes.push(l);
     }
-    for (const s of [1, -1]) addEye(g, 0.34, 0.06, s * 0.13, 0.026, [0.2, 0.6, s]);
-    const mouth = mesh(new T.BoxGeometry(0.03, 0.01, 0.12), darkMat, 0.44, -0.035, 0); g.add(mouth);
-    for (const s of [1, -1]) for (let i = 0; i < 5; i++) {
-      const slit = mesh(new T.BoxGeometry(0.008, 0.006, 0.05), darkMat, 0.3 - i * 0.045, -0.04, s * 0.12);
-      slit.rotation.y = s * 0.25; g.add(slit);
+    // wide mouth between the lobes, eyes on the sides of the head
+    const mouth = mesh(new T.BoxGeometry(0.03, 0.028, 0.16), darkMat, 0.485, -0.005, 0);
+    mouth.scale.z = 1; g.add(mouth);
+    for (const sd of [1, -1]) addEye(g, 0.4, 0.0, sd * 0.155, 0.022, [0.1, 0.1, sd]);
+    // gill slits underneath
+    for (const sd of [1, -1]) for (let i = 0; i < 5; i++) {
+      const slit = mesh(new T.BoxGeometry(0.006, 0.004, 0.06), darkMat, 0.3 - i * 0.05, -0.036, sd * (0.1 + i * 0.006));
+      slit.rotation.y = sd * 0.2; g.add(slit);
     }
 
+    g.userData.uvBox = { minX: -0.8, maxX: 0.64 };    // drawn body occupies u in [0.21, 1]; map the model body onto it
     projectUVs(g, 'top');
     return {
-      group: g, height: 0.2, width: 1.1, faces: 'x',
+      group: g, height: 0.22, width: 1.2, faces: 'x',
       anim(t, o) {
+        // travelling-wave flap: the wave starts at the body and reaches the tips a beat later
         const p = body.geometry.attributes.position, a = p.array, b = body.userData.base;
+        const w = 2.1 * (0.7 + 0.3 * o.speedFactor);
         for (let i = 0; i < a.length; i += 3) {
-          const s = clamp(Math.abs(b[i + 2]) / 0.56, 0, 1);
-          a[i + 1] = b[i + 1] + Math.sin(t * 3 + o.phase - s * 2.4) * 0.16 * s * s;
+          const s = clamp(Math.abs(b[i + 2]) / SPAN, 0, 1);
+          const u = clamp((b[i] + 0.5), 0, 1);
+          a[i + 1] = b[i + 1] + Math.sin(t * w + o.phase - s * 2.6) * 0.15 * Math.pow(s, 1.7)
+                              + Math.sin(t * w + o.phase - s * 2.6 - 0.9) * 0.02 * s * (u - 0.5);   // slight twist
         }
         p.needsUpdate = true; body.geometry.computeVertexNormals();
-        tail.rotation.y = Math.sin(t * 2 + o.phase) * 0.15;
-        lobes[0].rotation.z = Math.sin(t * 2.5 + o.phase) * 0.2; lobes[1].rotation.z = -lobes[0].rotation.z;
+        tail.rotation.y = Math.sin(t * 1.6 + o.phase) * 0.12;
+        tail.rotation.z = -PI / 2 + Math.sin(t * 1.1 + o.phase) * 0.05;
+        lobes[0].rotation.y = -0.35 + Math.sin(t * 1.4 + o.phase) * 0.12;
+        lobes[1].rotation.y = 0.35 - Math.sin(t * 1.4 + o.phase) * 0.12;
       },
     };
   }

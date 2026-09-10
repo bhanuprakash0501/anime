@@ -544,7 +544,7 @@
       // review mode: creatures parked in a row, slowly turning, close to the camera
       creatures.forEach((c, i) => {
         const n = creatures.length, x = (i - (n - 1) / 2) * (n > 3 ? 9 : 14);
-        c.mesh.position.set(x, c.motion === 'crawl' ? FLOOR_Y + 0.02 * c.size : 7 + (i % 2) * 4, n > 3 ? 4 : 14);
+        c.mesh.position.set(x, c.motion === 'crawl' ? FLOOR_Y + 0.02 * c.size : 7 + (i % 2) * 4, n > 3 ? 4 : 8);
         c.mesh.rotation.set(0, Math.sin(t * 0.4 + i) * 0.7, 0);
         c.model.anim(t, { speedFactor: 1, phase: c.phase });
         if (c.nameSprite) c.nameSprite.position.set(x, c.mesh.position.y + c.h / 2 + c.nameH / 2 + 0.4, 4);
@@ -569,7 +569,11 @@
     pipeIdle -= dt;
     if (pipeIdle < 0) { spawnBubble(PIPE.x, PIPE.y + rand(-1, 1), PIPE.z + rand(-1, 1), rand(0.1, 0.3), rand(2, 4)); pipeIdle = rand(0.4, 2.5); }
 
-    if (SHOWCASE) { camera.position.set(0, 9, 34); camera.lookAt(0, 7, 0); }
+    if (SHOWCASE) {
+      // &tilt=1 looks down from above (planform view, good for the ray / turtle / crab)
+      if (/[?&]tilt=1/.test(location.search)) { camera.position.set(0, 30, 26); camera.lookAt(0, 7, 6); }
+      else { camera.position.set(0, 9, 34); camera.lookAt(0, 7, 0); }
+    }
     else { camera.position.x = Math.sin(t * 0.08) * 3; camera.lookAt(0, 10, -6); }
 
     renderer.render(scene, camera);
