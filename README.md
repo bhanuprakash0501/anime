@@ -144,6 +144,18 @@ HAProxy: point the `anime.monagadu.com` backend at `192.168.201.222:80`; see
 `deploy/haproxy-snippet.cfg`. If `PUBLIC_URL` is left empty the app derives the address
 from the `X-Forwarded-Proto` / `Host` headers instead.
 
+### Mount points and adding more themes
+
+The aquarium is served both at the site root (`https://anime.monagadu.com/`) and under
+`https://anime.monagadu.com/aqua/` (`/aqua/scan`, `/aqua/admin`, `/aqua/api/...`). The pages
+work out their own base path from the address bar, so the same files serve both mounts, and
+the scan link and API calls follow whichever mount the page was opened from.
+
+To add another theme later (say `/jungle/`), give it its own folder and app port, then copy
+the `/aqua/` block in `deploy/nginx-sketch-aquarium.conf` and change three things: the
+prefix, the `alias` paths, and the upstream port. Nothing in the pages needs to change.
+When several themes exist, the root mount can become a landing page that links to them.
+
 ### Update pipeline: push to GitHub, server pulls
 
 The server updates itself from GitHub; `deploy.py` is only needed for the first install.
