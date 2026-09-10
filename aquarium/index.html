@@ -24,10 +24,11 @@
   // an address phones can actually reach.
   (function () {
     const el = document.getElementById('scanurl');
+    const BASE = location.pathname.replace(/\/(index\.html|scan|admin)?$/, '');
     const show = url => { el.innerHTML = 'Scan your drawing at <b>' + url + '</b>'; };
     const local = /^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(location.hostname);
-    if (!local) { show(location.origin + '/scan'); return; }
-    fetch('/api/info').then(r => r.json()).then(i => show(i.scan_url)).catch(() => show(location.origin + '/scan'));
+    if (!local) { show(location.origin + BASE + '/scan'); return; }
+    fetch(BASE + '/api/info').then(r => r.json()).then(i => show(i.scan_url)).catch(() => show(location.origin + BASE + '/scan'));
   })();
 </script>
 <script src="vendor/three.min.js"></script>

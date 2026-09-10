@@ -73,6 +73,7 @@
 <script>
 (() => {
   const $ = id => document.getElementById(id);
+  const BASE = location.pathname.replace(/\/(index\.html|scan|admin)?$/, '');
   const status = $('status'), result = $('result'), live = $('live'), video = $('video');
   const MAX_SIDE = 2000;
   let stream = null;
@@ -126,7 +127,7 @@
   async function upload(blob) {
     setStatus('Scanning...', true);
     try {
-      const r = await fetch('/api/scan', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+      const r = await fetch(BASE + '/api/scan', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
       const j = await r.json();
       showResult(j);
     } catch (e) {
@@ -144,7 +145,7 @@
       stopLive();
       $('capture').style.display = 'none';
       $('resultTitle').textContent = `🎉 Your ${j.label} is swimming!`;
-      $('resultImg').src = j.sprite; $('resultImg').style.display = '';
+      $('resultImg').src = BASE + j.sprite; $('resultImg').style.display = '';
       $('resultSub').textContent = j.name ? 'Name found - look for it above your creature.' : 'No name was found in the box, so it swims without a name tag.';
     } else {
       $('capture').style.display = 'none';

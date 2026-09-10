@@ -56,8 +56,9 @@ class Handler(SimpleHTTPRequestHandler):
             return PUBLIC_URL
         host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host")
         proto = self.headers.get("X-Forwarded-Proto", "http")
+        prefix = self.headers.get("X-Forwarded-Prefix", "").rstrip("/")
         if host and not host.startswith(("localhost", "127.")):
-            return f"{proto}://{host}"
+            return f"{proto}://{host}{prefix}"
         return f"http://{lan_ip()}:{PORT}"
 
     def authorized(self):

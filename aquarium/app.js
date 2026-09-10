@@ -4,6 +4,7 @@
 // retire two minutes after they arrived. New arrivals enter through a submarine pipe.
 (() => {
   const hint = document.getElementById('hint');
+  const BASE = location.pathname.replace(/\/(index\.html|scan|admin)?$/, '');   // '' at the root, '/aqua' when mounted under a prefix
   const SHOWCASE = /[?&]showcase=1/.test(location.search);   // ?showcase=1 parks creatures up close for review
   const rand = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -369,9 +370,9 @@
 
   async function addCreature(entry, fromPipe) {
     seen.add(entry.id);
-    const tex = await loadTex(entry.sprite);
+    const tex = await loadTex(BASE + entry.sprite);
     if (!tex) return;
-    const nameTex = entry.name ? await loadTex(entry.name) : null;
+    const nameTex = entry.name ? await loadTex(BASE + entry.name) : null;
     const spec = SPEC[entry.motion] || SPEC.swim;
     const model = SketchModels.build(entry.species, tex);
     const mesh = model.group;                      // the whole rig moves as one object
@@ -522,7 +523,7 @@
   let firstPoll = !/[?&]pipe=1/.test(location.search);
   async function poll() {
     try {
-      const r = await fetch('/api/sprites', { cache: 'no-store' });
+      const r = await fetch(BASE + '/api/sprites', { cache: 'no-store' });
       const list = await r.json();
       const ids = new Set(list.map(e => e.id));
       for (let i = creatures.length - 1; i >= 0; i--) {

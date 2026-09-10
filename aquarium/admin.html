@@ -62,6 +62,7 @@
 <script>
 (() => {
   const $ = id => document.getElementById(id);
+  const BASE = location.pathname.replace(/\/(index\.html|scan|admin)?$/, '');
   let KEY = localStorage.getItem('adminKey') || '';
   let entries = [];
   const cards = new Map();          // id -> {el, timer, bar, entry}
@@ -70,7 +71,7 @@
   function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 1800); }
 
   async function api(path, body) {
-    const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': KEY }, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
+    const r = await fetch(BASE + path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': KEY }, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
     if (r.status === 401) {
       KEY = prompt('Admin key:') || '';
       localStorage.setItem('adminKey', KEY);
@@ -89,8 +90,8 @@
     const el = document.createElement('div');
     el.className = 'card';
     el.innerHTML = `
-      <div class="pic"><img src="${e.sprite}" alt=""></div>
-      <div class="nameimg">${e.name ? `<img src="${e.name}" alt="name">` : '<span>no name</span>'}</div>
+      <div class="pic"><img src="${BASE + e.sprite}" alt=""></div>
+      <div class="nameimg">${e.name ? `<img src="${BASE + e.name}" alt="name">` : '<span>no name</span>'}</div>
       <div class="meta"><span>${e.label}</span><span>added ${clock(e.ts)}</span></div>
       <div class="meta"><span class="timer"></span><span class="left"></span></div>
       <div class="bar"><i></i></div>
@@ -177,7 +178,7 @@
     const c = document.createElement('canvas'); c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
     c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
     c.toBlob(async b => {
-      const r = await fetch('/api/scan', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: b });
+      const r = await fetch(BASE + '/api/scan', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: b });
       const j = await r.json();
       toast(j.ok ? `Added ${j.label}` : (j.error || 'No sheet found'));
       refresh();
@@ -185,7 +186,7 @@
     e.target.value = '';
   };
   $('clearBtn').onclick = async () => { if (confirm('Remove every creature from the tank?')) { await api('/api/admin/clear', {}); toast('Tank cleared'); refresh(); } };
-  $('openTank').onclick = () => window.open('/', '_blank');
+  $('openTank').onclick = () => window.open(BASE + '/', '_blank');
 
   refresh();
   setInterval(refresh, 3000);
