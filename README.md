@@ -76,8 +76,9 @@ Open http://localhost:8000 on the projector screen and press `f` for fullscreen.
 
 ## Scanning from a phone or laptop (default)
 
-The aquarium shows a scan address in its corner, like `http://192.168.1.20:8000/scan`
-(also printed in the console). Open it on any phone, tablet or laptop on the same Wi-Fi:
+The aquarium shows a QR code and the scan address in its corner, like
+`http://192.168.1.20:8000/scan` (also printed in the console). Visitors point their phone
+camera at the QR code, or type the address, on any phone, tablet or laptop on the same Wi-Fi:
 
 * **Phones and tablets**: tap "Take a photo" - the native camera app opens - shoot the
   sheet, done. Works on iPhone and Android over plain HTTP, no install, no permissions
