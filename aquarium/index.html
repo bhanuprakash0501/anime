@@ -10,14 +10,19 @@
           font: 700 4vmin system-ui, sans-serif; text-shadow: 0 2px 12px rgba(0,0,0,.5);
           opacity: .9; pointer-events: none; transition: opacity .8s; }
   #hint.hidden { opacity: 0; }
-  #scanurl { position: fixed; right: 2vw; bottom: 2vh; color: #fff; font: 600 2.2vmin system-ui, sans-serif;
-             background: rgba(0,40,70,.45); padding: .6em 1em; border-radius: 1em; pointer-events: none; }
-  #scanurl b { font-size: 1.15em; }
+  #scanurl { position: fixed; right: 2vw; bottom: 2vh; display: flex; align-items: center; gap: 1.2vmin;
+             color: #fff; font: 600 2.2vmin system-ui, sans-serif; background: rgba(0,40,70,.5);
+             padding: 1vmin 1.4vmin 1vmin 1vmin; border-radius: 1.4vmin; pointer-events: none; }
+  #scanurl canvas { width: 16vmin; height: 16vmin; background: #fff; border-radius: .8vmin; padding: .6vmin; box-sizing: border-box; display: block; }
+  #scanurl .txt { display: flex; flex-direction: column; gap: .3em; }
+  #scanurl .txt small { opacity: .85; font-weight: 500; }
+  #scanurl b { font-size: 1.1em; word-break: break-all; }
 </style>
 </head>
 <body>
 <div id="hint">Color a sea creature, then take its photo on your phone!</div>
 <div id="scanurl"></div>
+<script src="vendor/qrcode.min.js"></script>
 <script>
   // The scan link is relative to wherever this page was opened from. Only when the
   // tank is opened as localhost (the projector PC itself) do we ask the server for
@@ -25,7 +30,19 @@
   (function () {
     const el = document.getElementById('scanurl');
     const BASE = location.pathname.replace(/\/(index\.html|scan|admin)?$/, '');
-    const show = url => { el.innerHTML = 'Scan your drawing at <b>' + url + '</b>'; };
+    const show = url => {
+      el.innerHTML = '<canvas id="qr"></canvas><div class="txt"><small>Point your phone camera here</small><b>' + url + '</b></div>';
+      // QR code drawn in the browser, so it always matches the address this page was opened from
+      try {
+        const qr = qrcode(0, 'M'); qr.addData(url); qr.make();
+        const n = qr.getModuleCount(), px = 8, c = document.getElementById('qr');
+        c.width = c.height = n * px;
+        const g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+        g.fillStyle = '#062033';
+        for (let r = 0; r < n; r++) for (let q = 0; q < n; q++) if (qr.isDark(r, q)) g.fillRect(q * px, r * px, px, px);
+      } catch (e) { el.querySelector('canvas').remove(); }
+    };
     const local = /^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(location.hostname);
     if (!local) { show(location.origin + BASE + '/scan'); return; }
     fetch(BASE + '/api/info').then(r => r.json()).then(i => show(i.scan_url)).catch(() => show(location.origin + BASE + '/scan'));
