@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b6a9c">
+<title>Sketch Aquarium - Scan</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: linear-gradient(#39d6f1, #0a5e93); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff; }
+  main { max-width: 560px; margin: 0 auto; padding: 24px 18px 40px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  p.sub { margin: 0 0 22px; opacity: .9; }
+  .card { background: rgba(255,255,255,.14); border-radius: 18px; padding: 18px; margin-bottom: 16px; backdrop-filter: blur(6px); }
+  .btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 18px; border: 0; border-radius: 14px;
+         font-size: 1.15rem; font-weight: 700; color: #063a5a; background: #ffd23f; cursor: pointer; margin-top: 12px; }
+  .btn.secondary { background: rgba(255,255,255,.9); }
+  .btn:active { transform: scale(.98); }
+  .btn[disabled] { opacity: .5; cursor: default; }
+  input[type=file] { display: none; }
+  video, canvas.preview { width: 100%; border-radius: 12px; background: #000; display: block; }
+  #status { text-align: center; font-weight: 700; font-size: 1.15rem; min-height: 1.5em; margin-top: 10px; }
+  #result { display: none; text-align: center; }
+  #result.show { display: block; }
+  #result .big { font-size: 2rem; margin: 6px 0; }
+  #result img { max-width: 60%; max-height: 180px; border-radius: 10px; background: rgba(255,255,255,.2); padding: 8px; }
+  ul.tips { margin: 8px 0 0; padding-left: 20px; opacity: .92; }
+  .spinner { display: inline-block; width: 22px; height: 22px; border: 3px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #live { display: none; }
+  #live.show { display: block; }
+  small.url { display: block; text-align: center; opacity: .8; margin-top: 18px; word-break: break-all; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sketch Aquarium</h1>
+  <p class="sub">Take a photo of your colored sheet and watch it swim!</p>
+
+  <div class="card" id="capture">
+    <div id="live">
+      <video id="video" autoplay playsinline muted></video>
+      <button class="btn" id="snap">📸 Take photo</button>
+    </div>
+    <div id="picker">
+      <button class="btn" id="cameraBtn">📷 Take a photo</button>
+      <button class="btn secondary" id="fileBtn">🖼️ Choose a photo</button>
+      <input type="file" id="cameraInput" accept="image/*" capture="environment">
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <div class="card" id="result">
+    <div class="big" id="resultTitle"></div>
+    <img id="resultImg" alt="">
+    <div id="resultSub"></div>
+    <button class="btn" id="again">Scan another sheet</button>
+  </div>
+
+  <div class="card">
+    <strong>Tips</strong>
+    <ul class="tips">
+      <li>Keep the whole sheet in the photo, all four corner squares included.</li>
+      <li>Hold the phone flat above the sheet, in good light, no glare.</li>
+      <li>Write your name in the box so it floats next to your creature.</li>
+    </ul>
+  </div>
+  <small class="url" id="url"></small>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const status = $('status'), result = $('result'), live = $('live'), video = $('video');
+  const MAX_SIDE = 2000;
+  let stream = null;
+
+  $('cameraBtn').onclick = () => $('cameraInput').click();
+  $('fileBtn').onclick = () => $('fileInput').click();
+  $('cameraInput').onchange = e => handleFile(e.target.files[0]);
+  $('fileInput').onchange = e => handleFile(e.target.files[0]);
+  $('again').onclick = () => { result.classList.remove('show'); $('capture').style.display = ''; status.textContent = ''; startLive(); };
+  $('url').textContent = location.href.split('?')[0];
+
+  // Live preview only works on secure origins (localhost / https). Elsewhere the
+  // native camera app via the file picker is used, which works on every phone.
+  async function startLive() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) return;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      video.srcObject = stream;
+      live.classList.add('show');
+    } catch (e) { /* no camera or permission denied: picker only */ }
+  }
+  function stopLive() {
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    live.classList.remove('show');
+  }
+  $('snap').onclick = () => {
+    const c = document.createElement('canvas');
+    c.width = video.videoWidth; c.height = video.videoHeight;
+    c.getContext('2d').drawImage(video, 0, 0);
+    c.toBlob(b => upload(b), 'image/jpeg', 0.92);
+  };
+
+  async function handleFile(file) {
+    if (!file) return;
+    setStatus('Preparing photo...', true);
+    try {
+      // decode with EXIF orientation applied, then downscale so uploads are quick
+      let bmp;
+      try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+      catch (e) { bmp = await createImageBitmap(file); }
+      const s = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      c.toBlob(b => upload(b), 'image/jpeg', 0.9);
+    } catch (e) {
+      setStatus('Could not read that photo. Please try again.');
+    }
+  }
+
+  async function upload(blob) {
+    setStatus('Scanning...', true);
+    try {
+      const r = await fetch('/api/scan', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+      const j = await r.json();
+      showResult(j);
+    } catch (e) {
+      setStatus('Upload failed. Is the aquarium running?');
+    }
+  }
+
+  function setStatus(text, busy) {
+    status.innerHTML = (busy ? '<span class="spinner"></span>' : '') + text;
+  }
+
+  function showResult(j) {
+    status.textContent = '';
+    if (j.ok) {
+      stopLive();
+      $('capture').style.display = 'none';
+      $('resultTitle').textContent = `🎉 Your ${j.label} is swimming!`;
+      $('resultImg').src = j.sprite; $('resultImg').style.display = '';
+      $('resultSub').textContent = j.name ? 'Name found - look for it above your creature.' : 'No name was found in the box, so it swims without a name tag.';
+    } else {
+      $('capture').style.display = 'none';
+      $('resultTitle').textContent = '😕 No sheet found';
+      $('resultImg').style.display = 'none';
+      $('resultSub').textContent = j.error || 'Make sure the whole sheet with its black border is in the photo, flat and well lit, then try again.';
+    }
+    result.classList.add('show');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  startLive();
+})();
+</script>
+</body>
+</html>

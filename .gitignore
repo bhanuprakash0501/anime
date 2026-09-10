@@ -1,0 +1,15 @@
+# python / venv
+.venv/
+__pycache__/
+*.pyc
+
+# generated at runtime or by templates.py
+sprites/
+test_scans/
+inbox/
+templates/
+species_preview.png
+
+# large media
+*.mov
+*.mp4

@@ -1,0 +1,1 @@
+paramiko>=3.4   # only needed on the deploying machine (deploy/deploy.py)

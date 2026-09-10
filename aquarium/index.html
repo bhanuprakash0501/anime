@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Sketch Aquarium</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b6a9c; overflow: hidden; cursor: none; }
+  canvas { display: block; }
+  #hint { position: fixed; left: 0; right: 0; bottom: 6vh; text-align: center; color: #fff;
+          font: 700 4vmin system-ui, sans-serif; text-shadow: 0 2px 12px rgba(0,0,0,.5);
+          opacity: .9; pointer-events: none; transition: opacity .8s; }
+  #hint.hidden { opacity: 0; }
+  #scanurl { position: fixed; right: 2vw; bottom: 2vh; color: #fff; font: 600 2.2vmin system-ui, sans-serif;
+             background: rgba(0,40,70,.45); padding: .6em 1em; border-radius: 1em; pointer-events: none; }
+  #scanurl b { font-size: 1.15em; }
+</style>
+</head>
+<body>
+<div id="hint">Color a sea creature, then take its photo on your phone!</div>
+<div id="scanurl"></div>
+<script>
+  fetch('/api/info').then(r => r.json()).then(i => {
+    document.getElementById('scanurl').innerHTML = 'Scan your drawing at <b>' + i.scan_url + '</b>';
+  }).catch(() => {});
+</script>
+<script src="vendor/three.min.js"></script>
+<script src="models.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

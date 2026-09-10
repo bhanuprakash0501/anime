@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch Aquarium - Admin</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #0d2b45; color: #eaf4fb; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 14px 18px; background: #0a2036; border-bottom: 1px solid #1e4566; position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 1.2rem; margin: 0 auto 0 0; }
+  main { padding: 18px; max-width: 1400px; margin: 0 auto; }
+  h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: .06em; opacity: .75; margin: 22px 0 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .card { background: #123a5c; border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .card.expired { opacity: .7; }
+  .pic { background: linear-gradient(#2fb4dd, #0f6ea3); border-radius: 10px; height: 150px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .pic img { max-width: 92%; max-height: 92%; }
+  .nameimg { height: 34px; display: flex; align-items: center; }
+  .nameimg img { max-height: 34px; max-width: 100%; background: rgba(255,255,255,.85); border-radius: 6px; padding: 2px 6px; }
+  .nameimg span { opacity: .6; font-style: italic; }
+  .meta { display: flex; justify-content: space-between; font-size: .9rem; opacity: .9; }
+  .timer { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 1.25rem; }
+  .timer.low { color: #ffb347; }
+  .timer.out { color: #ff6b6b; }
+  .bar { height: 6px; background: #0a2036; border-radius: 3px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: #5ee0a0; transition: width 1s linear; }
+  .bar i.low { background: #ffb347; }
+  .actions { display: flex; gap: 8px; }
+  button { border: 0; border-radius: 9px; padding: 9px 12px; font-weight: 700; cursor: pointer; color: #062033; background: #ffd23f; }
+  button.ghost { background: #1f5c8a; color: #eaf4fb; }
+  button.danger { background: #ff6b6b; }
+  button:active { transform: scale(.97); }
+  button[disabled] { opacity: .5; cursor: default; }
+  input[type=file] { display: none; }
+  .empty { opacity: .6; padding: 20px 0; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #ffd23f; color: #062033; padding: 10px 16px; border-radius: 10px; font-weight: 700; opacity: 0; transition: opacity .3s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  .stat { font-size: .9rem; opacity: .8; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🐠 Sketch Aquarium admin</h1>
+  <span class="stat" id="stat"></span>
+  <button id="addBtn">➕ Add creature (photo)</button>
+  <input type="file" id="addInput" accept="image/*">
+  <button class="ghost" id="openTank">Open aquarium</button>
+  <button class="danger" id="clearBtn">Clear tank</button>
+</header>
+<main>
+  <h2>In the tank</h2>
+  <div class="grid" id="live"></div>
+  <div class="empty" id="liveEmpty" hidden>Nothing swimming right now.</div>
+  <h2>Recently expired / removed</h2>
+  <div class="grid" id="expired"></div>
+  <div class="empty" id="expiredEmpty" hidden>No history yet.</div>
+</main>
+<div id="toast"></div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let KEY = localStorage.getItem('adminKey') || '';
+  let entries = [];
+  const cards = new Map();          // id -> {el, timer, bar, entry}
+  let serverOffset = 0;             // server time - client time (seconds)
+
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 1800); }
+
+  async function api(path, body) {
+    const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': KEY }, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
+    if (r.status === 401) {
+      KEY = prompt('Admin key:') || '';
+      localStorage.setItem('adminKey', KEY);
+      if (KEY) return api(path, body);
+    }
+    return r.json();
+  }
+
+  function fmt(sec) {
+    sec = Math.max(0, Math.round(sec));
+    return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+  }
+  function clock(ts) { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+
+  function makeCard(e) {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `
+      <div class="pic"><img src="${e.sprite}" alt=""></div>
+      <div class="nameimg">${e.name ? `<img src="${e.name}" alt="name">` : '<span>no name</span>'}</div>
+      <div class="meta"><span>${e.label}</span><span>added ${clock(e.ts)}</span></div>
+      <div class="meta"><span class="timer"></span><span class="left"></span></div>
+      <div class="bar"><i></i></div>
+      <div class="actions"></div>`;
+    const actions = el.querySelector('.actions');
+    const b = (label, cls, fn) => { const x = document.createElement('button'); x.textContent = label; if (cls) x.className = cls; x.onclick = fn; actions.appendChild(x); return x; };
+    if (e.live) {
+      b('+2 min', 'ghost', () => act('extend', e.id, { seconds: 120 }));
+      b('Delete', 'danger', () => act('delete', e.id));
+    } else {
+      b('Bring back', '', () => act('revive', e.id));
+      b('Forget', 'ghost', () => act('forget', e.id));
+    }
+    return { el, timer: el.querySelector('.timer'), left: el.querySelector('.left'), bar: el.querySelector('.bar i'), entry: e };
+  }
+
+  async function act(op, id, extra) {
+    const j = await api(`/api/admin/${op}`, Object.assign({ id }, extra || {}));
+    if (j && j.ok) { toast({ extend: 'Extended', delete: 'Removed from tank', revive: 'Back in the tank', forget: 'Forgotten' }[op]); refresh(); }
+    else toast((j && j.error) || 'Failed');
+  }
+
+  function render() {
+    const live = $('live'), expired = $('expired');
+    const seen = new Set();
+    for (const e of entries) {
+      seen.add(e.id);
+      let c = cards.get(e.id);
+      if (!c || c.entry.live !== e.live) {
+        if (c) c.el.remove();
+        c = makeCard(e); cards.set(e.id, c);
+      }
+      c.entry = e;
+      const target = e.live ? live : expired;
+      if (c.el.parentNode !== target) target.appendChild(c.el);
+      c.el.classList.toggle('expired', !e.live);
+    }
+    for (const [id, c] of cards) if (!seen.has(id)) { c.el.remove(); cards.delete(id); }
+    // newest first
+    for (const box of [live, expired]) [...box.children].sort((a, b) => (cards.get(b.dataset.id) || {}).entry?.ts - (cards.get(a.dataset.id) || {}).entry?.ts);
+    $('liveEmpty').hidden = entries.some(e => e.live);
+    $('expiredEmpty').hidden = entries.some(e => !e.live);
+    $('stat').textContent = `${entries.filter(e => e.live).length} swimming · timeout ${fmt(ttl)}`;
+    tick();
+  }
+
+  let ttl = 120;
+  function tick() {
+    const now = Date.now() / 1000 + serverOffset;
+    for (const c of cards.values()) {
+      const e = c.entry;
+      if (e.live) {
+        const left = e.expires_at - now;
+        c.timer.textContent = fmt(left);
+        c.timer.className = 'timer' + (left < 20 ? ' out' : left < 45 ? ' low' : '');
+        c.left.textContent = 'left';
+        c.bar.style.width = `${Math.max(0, Math.min(100, left / e.ttl * 100))}%`;
+        c.bar.className = left < 45 ? 'low' : '';
+      } else {
+        c.timer.textContent = '0:00'; c.timer.className = 'timer out';
+        c.left.textContent = e.removed ? 'removed' : 'expired';
+        c.bar.style.width = '0%';
+      }
+    }
+  }
+
+  async function refresh() {
+    try {
+      const j = await api('/api/admin/list');
+      if (!j || !j.entries) return;
+      serverOffset = j.now - Date.now() / 1000;
+      ttl = j.ttl;
+      entries = j.entries;
+      render();
+    } catch (e) { /* server away */ }
+  }
+
+  $('addBtn').onclick = () => $('addInput').click();
+  $('addInput').onchange = async e => {
+    const file = e.target.files[0]; if (!file) return;
+    toast('Scanning...');
+    let bmp; try { bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (_) { bmp = await createImageBitmap(file); }
+    const s = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    c.toBlob(async b => {
+      const r = await fetch('/api/scan', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: b });
+      const j = await r.json();
+      toast(j.ok ? `Added ${j.label}` : (j.error || 'No sheet found'));
+      refresh();
+    }, 'image/jpeg', 0.9);
+    e.target.value = '';
+  };
+  $('clearBtn').onclick = async () => { if (confirm('Remove every creature from the tank?')) { await api('/api/admin/clear', {}); toast('Tank cleared'); refresh(); } };
+  $('openTank').onclick = () => window.open('/', '_blank');
+
+  refresh();
+  setInterval(refresh, 3000);
+  setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>

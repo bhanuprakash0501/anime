@@ -1,0 +1,5 @@
+# Settings for the Sketch Aquarium service (read by systemd / start.sh)
+PORT=8000
+TTL=120
+PUBLIC_URL=https://anime.monagadu.com
+ADMIN_KEY=

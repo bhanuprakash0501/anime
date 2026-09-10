@@ -1,0 +1,17 @@
+[Unit]
+Description=Sketch Aquarium (scan page, admin, 3D tank)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sketch_aquarium
+EnvironmentFile=-/opt/sketch_aquarium/deploy/env
+ExecStart=/opt/sketch_aquarium/.venv/bin/python -u /opt/sketch_aquarium/app.py --port ${PORT} --ttl ${TTL} --public-url ${PUBLIC_URL} --admin-key ${ADMIN_KEY}
+Restart=always
+RestartSec=3
+# OpenCV can spin many threads on a small container; keep it polite
+Environment=OMP_NUM_THREADS=2
+Environment=OPENCV_LOG_LEVEL=ERROR
+
+[Install]
+WantedBy=multi-user.target
