@@ -144,8 +144,26 @@ HAProxy: point the `anime.monagadu.com` backend at `192.168.201.222:80`; see
 `deploy/haproxy-snippet.cfg`. If `PUBLIC_URL` is left empty the app derives the address
 from the `X-Forwarded-Proto` / `Host` headers instead.
 
-Re-run `deploy.py` to push updates; `systemctl status sketch-aquarium` and
-`journalctl -u sketch-aquarium -f` show the service on the server.
+### Update pipeline: push to GitHub, server pulls
+
+The server updates itself from GitHub; `deploy.py` is only needed for the first install.
+
+1. Every push to `main` runs `.github/workflows/ci.yml`: compile checks, JavaScript parse,
+   sheet generation, the synthetic scan test (must be 8/8) and a live-server smoke test
+   including a real photo upload.
+2. On the server, `sketch-aquarium-update.timer` runs `deploy/autoupdate.sh` every minute.
+   It fetches `origin/main`, asks the GitHub API whether that commit's `test` check passed,
+   and deploys only green commits (waits while CI runs, skips failed ones). It reinstalls
+   dependencies if `requirements.txt` changed, regenerates sheets, reloads nginx if its
+   config changed, restarts the service, and rolls back to the previous commit if the
+   health check fails afterwards.
+
+Typical latency from `git push` to live: about two minutes (CI) plus up to one minute
+(timer). Log: `/var/log/sketch-aquarium-update.log` or
+`journalctl -u sketch-aquarium-update`. Set `REQUIRE_CI=0` in `deploy/env` to deploy every
+push without waiting for CI. Runtime data (`sprites/`, `inbox/`) is untouched by updates.
+
+`systemctl status sketch-aquarium` and `journalctl -u sketch-aquarium -f` show the app.
 
 ## Local webcam scanner (optional)
 
