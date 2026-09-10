@@ -1,0 +1,49 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: System libraries for OpenCV
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libgl1 libglib2.0-0 fonts-dejavu-core
+
+      - name: Install (headless OpenCV, as on the server)
+        run: |
+          sed 's/^opencv-python/opencv-python-headless/' requirements.txt > req.txt
+          pip install -q -r req.txt
+
+      - name: Python compiles
+        run: python -m py_compile app.py scanner.py shapes.py templates.py make_synthetic.py deploy/deploy.py
+
+      - name: JavaScript parses
+        run: for f in aquarium/app.js aquarium/models.js; do node --check "$f"; done
+
+      - name: Generate sheets
+        run: python templates.py
+
+      - name: Scanner end-to-end (synthetic photos, must be 8/8)
+        run: |
+          python make_synthetic.py | tee synthetic.log
+          grep -q "8/8 passed" synthetic.log
+
+      - name: Server answers
+        run: |
+          python app.py --port 8123 --bind 127.0.0.1 &
+          sleep 3
+          curl -sf http://127.0.0.1:8123/api/info
+          curl -sf http://127.0.0.1:8123/api/sprites >/dev/null
+          curl -sf -o /dev/null http://127.0.0.1:8123/scan
+          curl -sf -o /dev/null http://127.0.0.1:8123/admin
+          curl -sf -X POST -H "Content-Type: image/jpeg" --data-binary @test_scans/shark.jpg http://127.0.0.1:8123/api/scan | grep -q '"ok": true'

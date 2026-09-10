@@ -9,7 +9,20 @@ echo "== packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 # python + venv, and the shared libraries opencv-python needs on a headless Debian
-apt-get install -y -qq python3 python3-venv python3-pip libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 fonts-dejavu-core curl nginx >/dev/null
+apt-get install -y -qq python3 python3-venv python3-pip libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 fonts-dejavu-core curl nginx git >/dev/null
+
+echo "== git checkout (so the update timer can pull from GitHub)"
+if [ ! -d .git ]; then
+  git init -q -b main
+  git remote add origin https://github.com/bhanuprakash0501/anime.git
+fi
+git config --global --add safe.directory "$APP" >/dev/null 2>&1 || true
+if git fetch -q origin main; then
+  # adopt the GitHub commit without touching runtime data (sprites/, inbox/, .venv are ignored)
+  git reset -q --hard origin/main || true
+  sed -i 's/$//' deploy/*.sh deploy/env 2>/dev/null
+  chmod +x deploy/*.sh
+fi
 
 echo "== python environment"
 if [ ! -x .venv/bin/python ]; then python3 -m venv .venv; fi
@@ -27,7 +40,9 @@ echo "== service"
 set -a; . deploy/env; set +a
 if pidof systemd >/dev/null 2>&1 && command -v systemctl >/dev/null; then
   cp deploy/sketch-aquarium.service /etc/systemd/system/sketch-aquarium.service
+  cp deploy/sketch-aquarium-update.service deploy/sketch-aquarium-update.timer /etc/systemd/system/
   systemctl daemon-reload
+  systemctl enable --now sketch-aquarium-update.timer >/dev/null
   systemctl enable sketch-aquarium >/dev/null
   systemctl restart sketch-aquarium
   sleep 2

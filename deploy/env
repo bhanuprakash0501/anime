@@ -6,3 +6,5 @@ TTL=120
 # leave empty: the app derives the public address from the proxy headers / the browser
 PUBLIC_URL=
 ADMIN_KEY=
+# auto-update: only deploy commits whose GitHub Actions 'test' job passed (0 = deploy any push)
+REQUIRE_CI=1

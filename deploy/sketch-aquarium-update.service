@@ -1,0 +1,7 @@
+[Unit]
+Description=Sketch Aquarium: pull the latest tested commit from GitHub
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/sketch_aquarium/deploy/autoupdate.sh
