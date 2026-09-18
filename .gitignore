@@ -20,3 +20,4 @@ aquarium/models/_test_*
 # large source models kept locally, only the optimized .glb is committed
 aquarium/models/*_2.glb
 aquarium/models/*_src.glb
+aquarium/models/clown_fish.glb

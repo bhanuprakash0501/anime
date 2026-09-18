@@ -22,6 +22,22 @@ import sys
 TRIANGLES = 4
 FLOAT, UINT32, UINT16 = 5126, 5125, 5123
 
+# Extensions that only describe materials. The tank replaces every material with the
+# child's drawing, so these can be dropped -- which also unblocks models that mark one of
+# them "required" (three.js no longer implements pbrSpecularGlossiness, for instance).
+MATERIAL_EXTENSIONS = {
+    "KHR_materials_pbrSpecularGlossiness", "KHR_materials_specular", "KHR_materials_ior",
+    "KHR_materials_clearcoat", "KHR_materials_sheen", "KHR_materials_transmission",
+    "KHR_materials_volume", "KHR_materials_unlit", "KHR_materials_emissive_strength",
+    "KHR_materials_iridescence", "KHR_materials_anisotropy", "KHR_materials_variants",
+    "KHR_texture_transform", "KHR_texture_basisu",
+}
+# Extensions that change how the geometry is stored; this script reads accessors directly,
+# so it cannot handle them.
+GEOMETRY_EXTENSIONS = {
+    "KHR_draco_mesh_compression", "EXT_meshopt_compression", "KHR_mesh_quantization",
+}
+
 
 # --------------------------------------------------------------------------- glb io
 def read_glb(path):
@@ -141,6 +157,12 @@ def main():
     a = ap.parse_args()
 
     js, binb = read_glb(a.src)
+
+    blocking = GEOMETRY_EXTENSIONS.intersection(js.get("extensionsRequired", []))
+    if blocking:
+        raise SystemExit(f"{a.src}: needs {', '.join(sorted(blocking))}; re-export without mesh "
+                         f"compression, or convert with gltf-transform first")
+
     meshes = js.get("meshes", [])
 
     # pass 1: read every primitive, decide drop / keep / decimate
@@ -232,11 +254,24 @@ def main():
     for sc in js.get("scenes", []):
         sc["nodes"] = [node_map[i] for i in sc.get("nodes", []) if i in node_map]
 
-    # materials keep their colours but lose textures (the drawing is the skin)
+    # materials keep their colours but lose textures and material extensions
     for m in js.get("materials", []):
         m.pop("normalTexture", None); m.pop("occlusionTexture", None); m.pop("emissiveTexture", None)
         pbr = m.get("pbrMetallicRoughness", {})
         pbr.pop("baseColorTexture", None); pbr.pop("metallicRoughnessTexture", None)
+        ext = m.get("extensions")
+        if ext:
+            for name in list(ext):
+                if name in MATERIAL_EXTENSIONS:
+                    ext.pop(name)
+            if not ext:
+                m.pop("extensions")
+    for key in ("extensionsUsed", "extensionsRequired"):
+        left = [e for e in js.get(key, []) if e not in MATERIAL_EXTENSIONS]
+        if left:
+            js[key] = left
+        else:
+            js.pop(key, None)
 
     js["meshes"] = out_meshes
     js["nodes"] = new_nodes

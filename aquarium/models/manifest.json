@@ -1,5 +1,5 @@
 {
-  "clownfish": { "file": "clownfish.glb", "plane": "side",  "rotateY": 90, "keep": ["eye"], "clip": "Swimming_Normal", "speed": 1.0 },
+  "clownfish": { "file": "clownfish.glb", "plane": "side",  "rotateY": 180, "keep": ["eye"] },
   "shark":     { "file": "shark.glb",     "plane": "side",  "rotateY": 90, "keep": ["eye", "teeth", "tooth"], "clip": "|Swim|", "speed": 1.0 },
   "ray":       { "file": "manta.glb",     "plane": "top",   "rotateY": 90, "keep": ["eye"], "clip": "Swim" },
   "turtle":    { "file": "turtle.glb",    "plane": "top",   "rotateY": 90, "keep": ["eye"] },

@@ -6,7 +6,7 @@ with `tools/decimate_glb.py`; the full-resolution source is kept out of the repo
 
 | File | Title | Creator | Licence | Source |
 |---|---|---|---|---|
-| clownfish.glb | Clownfish | Quaternius | CC0 1.0 | https://poly.pizza/m/769fHo3eEB |
+| clownfish.glb | Clown fish | gimyujun392 (Sketchfab) | CC-BY 4.0 | https://sketchfab.com/3d-models/clown-fish-bd7657ce0ba443308b08febbeaf5bfa2 |
 | shark.glb | Shark | Quaternius | CC0 1.0 | https://poly.pizza/m/YYsK3gRCBZ |
 | manta.glb | Manta ray | Quaternius | CC0 1.0 | https://poly.pizza/m/yzD8b7ZHZm |
 | turtle.glb | Turtle | Poly by Google | CC-BY 3.0 | https://poly.pizza/m/fklSEvGm1Q8 |
@@ -17,6 +17,12 @@ with `tools/decimate_glb.py`; the full-resolution source is kept out of the repo
 
 CC-BY requires attribution: the scan page carries a credit line and this file travels with the
 code. https://creativecommons.org/licenses/by/3.0/ and https://creativecommons.org/licenses/by/4.0/
+
+The clown fish declared `KHR_materials_pbrSpecularGlossiness` as a *required* extension,
+which current three.js no longer implements, so it would not load at all. Material-only
+extensions are stripped along with the textures, which also removed 879 KB of embedded JPEGs:
+
+    python tools/decimate_glb.py clown_fish.glb aquarium/models/clownfish.glb --target 100000
 
 The octopus is reduced from 431,258 to 51,177 triangles (12.9 MB -> 1.4 MB) by dropping the
 sucker meshes, which are invisible at tank size, and clustering the two body meshes:

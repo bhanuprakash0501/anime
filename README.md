@@ -51,10 +51,12 @@ creature swims into a projected aquarium with the name floating above it.
   parts rotated about the body centre, each with its own phase, so they articulate properly.
   Models exported as one fused mesh fall back to a per-vertex wobble tuned per species, and a
   mesh too heavy to rebuild each frame gets body motion only. `tools/decimate_glb.py` shrinks
-  an oversized download to a triangle budget (drop detail meshes, cluster the rest).
+  an oversized download to a triangle budget (drop detail meshes, cluster the rest) and strips
+  textures plus material-only extensions, which also unblocks models that require an extension
+  three.js has dropped.
 * **Real 3D models.** All eight species ship with low-poly artist models in
-  `aquarium/models/` (Quaternius CC0 clownfish, shark and manta; Poly by Google CC-BY turtle,
-  crab, jellyfish and seahorse; a Sketchfab CC-BY octopus; see `models/CREDITS.md`). Embedded textures were
+  `aquarium/models/` (Quaternius CC0 shark and manta; Poly by Google CC-BY turtle, crab,
+  jellyfish and seahorse; Sketchfab CC-BY octopus and clown fish; see `models/CREDITS.md`). Embedded textures were
   stripped since the tank skins them with the drawing. To swap any of them for a better or
   more realistic model, replace the `.glb` in `aquarium/models/` and adjust its line in
   `aquarium/models/manifest.json` (see `manifest.example.json`): file, projection plane for

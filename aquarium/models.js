@@ -634,61 +634,89 @@ window.SketchModels = (() => {
   };
 
   // ---------------------------------------------- procedural motion for static models
-  // Works in the mesh's own space: y is up; the longer horizontal axis is the body axis.
-  function prepareDeform(mesh) {
-    const g = mesh.geometry;
-    g.computeBoundingBox();
-    const b = g.boundingBox, size = new T.Vector3(); b.getSize(size);
-    const c = new T.Vector3(); b.getCenter(c);
+  // Exporters disagree about which way is up: many Sketchfab/OBJ models are Z-up inside and
+  // are only turned upright by a wrapper node. So instead of guessing from the mesh's own
+  // bounding box, every vertex is measured once in world space (along the tank's forward,
+  // lateral and up axes) and the displacement directions are stored in the mesh's local
+  // space. Per frame it is then a few multiplies per vertex.
+  function prepareDeform(mesh, centre, half) {
+    const geo = mesh.geometry, pos = geo.attributes.position;
+    const inv = new T.Matrix3().setFromMatrix4(mesh.matrixWorld).invert();
+    const fwd = new T.Vector3(1, 0, 0).applyMatrix3(inv);      // tank +x in local space
+    const side = new T.Vector3(0, 0, 1).applyMatrix3(inv);     // tank +z
+    const up = new T.Vector3(0, 1, 0).applyMatrix3(inv);       // tank +y
+    const toLocal = fwd.length() || 1;                         // world units -> local units
+    fwd.normalize(); side.normalize(); up.normalize();
+
+    const n = pos.count;
+    const nl = new Float32Array(n), nw = new Float32Array(n), nv = new Float32Array(n);
+    const v = new T.Vector3();
+    for (let i = 0; i < n; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld).sub(centre);
+      nl[i] = v.x / Math.max(half.x, 1e-6);      // -1 tail .. +1 head
+      nw[i] = v.z / Math.max(half.z, 1e-6);      // -1 .. +1 across the body
+      nv[i] = v.y / Math.max(half.y, 1e-6);      // -1 bottom .. +1 top
+    }
     mesh.userData.deform = {
-      base: g.attributes.position.array.slice(), c, size,
-      axis: size.x >= size.z ? 0 : 2,           // index of the body-length axis (x or z)
+      base: pos.array.slice(), nl, nw, nv, fwd, side, up, toLocal,
+      hl: half.x, hw: half.z, hy: half.y,
     };
   }
 
   function deformExternal(mesh, t, motion, o) {
-    const d = mesh.userData.deform, pos = mesh.geometry.attributes.position, a = pos.array, b = d.base;
-    const hx = Math.max(d.size.x, 1e-6) / 2, hy = Math.max(d.size.y, 1e-6) / 2, hz = Math.max(d.size.z, 1e-6) / 2;
-    const lenI = d.axis, latI = d.axis === 0 ? 2 : 0;                 // length axis, lateral axis
-    const hl = lenI === 0 ? hx : hz, hw = latI === 0 ? hx : hz;
+    const d = mesh.userData.deform;
+    const attr = mesh.geometry.attributes.position, a = attr.array, b = d.base;
+    const nl = d.nl, nw = d.nw, nv = d.nv;
     const sp = o.speedFactor, ph = o.phase;
-    const p = Math.sin(t * 1.6 + ph);                                  // pulse phase (jellyfish / octopus)
-    for (let i = 0; i < a.length; i += 3) {
-      const x = b[i], y = b[i + 1], z = b[i + 2];
-      const ny = (y - d.c.y) / hy;                                     // -1 bottom .. 1 top
-      const nl = ((lenI === 0 ? x : z) - (lenI === 0 ? d.c.x : d.c.z)) / hl;   // -1 tail .. 1 head (sign unknown, fine)
-      const nw = ((latI === 0 ? x : z) - (latI === 0 ? d.c.x : d.c.z)) / hw;   // -1 .. 1 side to side
-      let dx = 0, dy = 0, dz = 0;
+    const p = Math.sin(t * 1.6 + ph);                          // pulse phase
+    const f = d.toLocal;
+    const fx = d.fwd.x, fy = d.fwd.y, fz = d.fwd.z;
+    const sx = d.side.x, sy = d.side.y, sz = d.side.z;
+    const ux = d.up.x, uy = d.up.y, uz = d.up.z;
+    for (let i = 0, j = 0; i < nl.length; i++, j += 3) {
+      const L = nl[i], W = nw[i], V = nv[i];
+      let dF = 0, dS = 0, dU = 0;                              // offsets in world units
       if (motion === 'pulse') {
-        // bell squeezes and lifts; everything hanging below trails in a wave
-        if (ny > 0.15) { const k = (ny - 0.15) / 0.85; dx += (x - d.c.x) * (-p * 0.13 * k); dz += (z - d.c.z) * (-p * 0.13 * k); dy += (y - d.c.y) * (p * 0.11); }
-        else { const depth = (0.15 - ny) / 1.15; const w = Math.sin(t * 2.2 + ph - depth * 5) * 0.11 * hw * depth; dx += w; dz += Math.cos(t * 1.7 + ph - depth * 4) * 0.09 * hw * depth; dy += -p * 0.06 * hy * depth; }
-      } else if (motion === 'crawl') {
-        // legs (low and out to the sides) step in two alternating groups; body bobs
-        const leg = ny < -0.05 && Math.abs(nw) > 0.3;
-        const grp = (nw > 0 ? 0 : Math.PI) + (nl > 0 ? 0 : Math.PI);
-        if (leg) { const k = Math.min(1, (Math.abs(nw) - 0.3) / 0.5) * Math.min(1, (-0.05 - ny) / 0.6); dy += Math.max(0, Math.sin(t * 9 * sp + ph + grp)) * 0.30 * hy * k; }
-        dy += Math.abs(Math.sin(t * 9 * sp + ph)) * 0.02 * hy;
-      } else if (motion === 'swim_slow') {
-        // flippers / limbs out to the sides stroke up and down; slight body undulation
-        const k = Math.max(0, (Math.abs(nw) - 0.4) / 0.6);
-        dy += Math.sin(t * 2.2 * sp + ph - Math.abs(nw) * 1.5) * 0.32 * hy * k * k;
-        const tail = Math.max(0, -nl);
-        if (latI === 0) dx += Math.sin(t * 2.2 * sp + ph) * 0.02 * hw * tail; else dz += Math.sin(t * 2.2 * sp + ph) * 0.02 * hw * tail;
-      } else if (motion === 'upright') {
-        // gentle sway that grows with height, tail (bottom) curls, fin area flutters
-        const sway = Math.sin(t * 1.4 + ph + ny * 1.2) * 0.06 * hw * (0.4 + 0.6 * Math.abs(ny));
-        if (latI === 0) dx += sway; else dz += sway;
-        if (ny < -0.35) { const k = (-0.35 - ny) / 0.65; const cur = Math.sin(t * 2.6 + ph - k * 3) * 0.11 * hl * k; if (lenI === 0) dx += cur; else dz += cur; }
-      } else {
-        // generic fish: side-to-side tail wag growing toward the tail end
-        const k = Math.max(0, -nl) ; const wag = Math.sin(t * 6 * sp + ph - k * 3) * 0.06 * hw * k * k;
-        if (latI === 0) dx += wag; else dz += wag;
+        if (V > 0.15) {                                        // the bell squeezes and lifts
+          const k = (V - 0.15) / 0.85;
+          dF = -L * d.hl * p * 0.13 * k;
+          dS = -W * d.hw * p * 0.13 * k;
+          dU = V * d.hy * p * 0.11;
+        } else {                                               // what hangs below trails
+          const depth = (0.15 - V) / 1.15;
+          dS = Math.sin(t * 2.2 + ph - depth * 5) * 0.11 * d.hw * depth;
+          dF = Math.cos(t * 1.7 + ph - depth * 4) * 0.09 * d.hl * depth;
+          dU = -p * 0.06 * d.hy * depth;
+        }
+      } else if (motion === 'crawl') {                         // legs step in two groups
+        const aw = W < 0 ? -W : W;
+        if (V < -0.05 && aw > 0.3) {
+          const k = Math.min(1, (aw - 0.3) / 0.5) * Math.min(1, (-0.05 - V) / 0.6);
+          const grp = (W > 0 ? 0 : PI) + (L > 0 ? 0 : PI);
+          dU = Math.max(0, Math.sin(t * 9 * sp + ph + grp)) * 0.30 * d.hy * k;
+        }
+      } else if (motion === 'swim_slow') {                     // flippers stroke
+        const aw = W < 0 ? -W : W;
+        const k = Math.max(0, (aw - 0.4) / 0.6);
+        dU = Math.sin(t * 2.2 * sp + ph - aw * 1.5) * 0.32 * d.hy * k * k;
+        const tail = Math.max(0, -L);
+        dS = Math.sin(t * 2.2 * sp + ph) * 0.02 * d.hw * tail;
+      } else if (motion === 'upright') {                       // sway, with the tail curling
+        const av = V < 0 ? -V : V;
+        dS = Math.sin(t * 1.4 + ph + V * 1.2) * 0.06 * d.hw * (0.4 + 0.6 * av);
+        if (V < -0.35) {
+          const k = (-0.35 - V) / 0.65;
+          dF = Math.sin(t * 2.6 + ph - k * 3) * 0.11 * d.hl * k;
+        }
+      } else {                                                 // fish: tail wags sideways
+        const k = Math.max(0, -L);
+        dS = Math.sin(t * 6 * sp + ph - k * 3) * 0.10 * d.hw * k * k;
       }
-      a[i] = x + dx; a[i + 1] = y + dy; a[i + 2] = z + dz;
+      a[j] = b[j] + (fx * dF + sx * dS + ux * dU) * f;
+      a[j + 1] = b[j + 1] + (fy * dF + sy * dS + uy * dU) * f;
+      a[j + 2] = b[j + 2] + (fz * dF + sz * dS + uz * dU) * f;
     }
-    pos.needsUpdate = true;
-    mesh.geometry.computeVertexNormals();
+    attr.needsUpdate = true;
   }
 
   // ------------------------------------- node-level part motion (arms, legs, fins)
@@ -871,7 +899,11 @@ window.SketchModels = (() => {
       let verts = 0;
       root.traverse(o => { if (o.isMesh) verts += o.geometry.attributes.position.count; });
       if (verts <= 60000) {
-        root.traverse(o => { if (o.isMesh && o.userData.skin && !o.isSkinnedMesh) { prepareDeform(o); deformed++; } });
+        g.updateMatrixWorld(true);
+        const dbox = new T.Box3().setFromObject(g);
+        const dcentre = dbox.getCenter(new T.Vector3());
+        const dhalf = dbox.getSize(new T.Vector3()).multiplyScalar(0.5);
+        root.traverse(o => { if (o.isMesh && o.userData.skin && !o.isSkinnedMesh) { prepareDeform(o, dcentre, dhalf); deformed++; } });
       } else {
         console.info(spec.file + ': ' + verts + ' vertices, too heavy to deform per frame; using body motion only');
       }
