@@ -13,7 +13,7 @@ with `tools/decimate_glb.py`; the full-resolution source is kept out of the repo
 | octopus.glb | octopus | s4dned (Sketchfab) | CC-BY 4.0 | https://sketchfab.com/3d-models/octopus-f2e89c34b1bd4f689c32c67db94fcc3d |
 | crab.glb | Crab | Poly by Google | CC-BY 3.0 | https://poly.pizza/m/2DgM36qZW2u |
 | jellyfish.glb | Jellyfish | Poly by Google | CC-BY 3.0 | https://poly.pizza/m/dA5osnS0Rzj |
-| seahorse.glb | Seahorse | Poly by Google | CC-BY 3.0 | https://poly.pizza/m/d_36p3CahYa |
+| seahorse.glb | Seahorse | askei (Sketchfab) | CC-BY 4.0 | https://sketchfab.com/3d-models/seahorse-16efde874c294c7d9b069aaa56632b02 |
 
 CC-BY requires attribution: the scan page carries a credit line and this file travels with the
 code. https://creativecommons.org/licenses/by/3.0/ and https://creativecommons.org/licenses/by/4.0/

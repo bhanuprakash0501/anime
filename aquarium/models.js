@@ -651,13 +651,23 @@ window.SketchModels = (() => {
     const n = pos.count;
     const nl = new Float32Array(n), nw = new Float32Array(n), nv = new Float32Array(n);
     const rad = new Float32Array(n);
+    const vx = new Float32Array(n), vy = new Float32Array(n), vz = new Float32Array(n);
     const v = new T.Vector3();
     for (let i = 0; i < n; i++) {
       v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld).sub(centre);
       nl[i] = v.x / Math.max(half.x, 1e-6);      // -1 tail .. +1 head
       nw[i] = v.z / Math.max(half.z, 1e-6);      // -1 .. +1 across the body
       nv[i] = v.y / Math.max(half.y, 1e-6);      // -1 bottom .. +1 top
-      rad[i] = Math.sqrt(v.y * v.y + v.z * v.z); // distance from the body's spine
+      vx[i] = v.x; vy[i] = v.y; vz[i] = v.z;
+    }
+
+    // the spine runs along the model's longest axis
+    const spine = half.x >= half.y && half.x >= half.z ? 0 : (half.y >= half.z ? 1 : 2);
+    const alongArr = spine === 0 ? nl : (spine === 1 ? nv : nw);
+    for (let i = 0; i < n; i++) {
+      const a1 = spine === 0 ? vy[i] : vx[i];
+      const a2 = spine === 2 ? vy[i] : vz[i];
+      rad[i] = Math.sqrt(a1 * a1 + a2 * a2);     // distance out from the spine
     }
 
     // Fins are the thin parts that stick out past the meat of the body. Slice the body along
@@ -666,7 +676,7 @@ window.SketchModels = (() => {
     const SLICES = 24;
     const buckets = [];
     for (let i = 0; i < SLICES; i++) buckets.push([]);
-    const slot = i => Math.min(SLICES - 1, Math.max(0, Math.floor((nl[i] + 1) / 2 * SLICES)));
+    const slot = i => Math.min(SLICES - 1, Math.max(0, Math.floor((alongArr[i] + 1) / 2 * SLICES)));
     for (let i = 0; i < n; i++) buckets[slot(i)].push(rad[i]);
     const typical = buckets.map(b => {
       if (!b.length) return 0;
@@ -730,6 +740,12 @@ window.SketchModels = (() => {
         if (V < -0.35) {
           const k = (-0.35 - V) / 0.65;
           dF = Math.sin(t * 2.6 + ph - k * 3) * 0.11 * d.hl * k;
+        }
+        const fw = fin[i];
+        if (fw > 0) {                                          // a seahorse beats its fins fast
+          const beat = t * 14 * sp + ph + V * 4;
+          dS += Math.sin(beat) * 0.05 * d.hw * fw;
+          dF += Math.cos(beat) * 0.035 * d.hl * fw;
         }
       } else {                                                 // fish
         const k = Math.max(0, -L);
@@ -862,7 +878,7 @@ window.SketchModels = (() => {
   const bufferCache = {};
   // Bump when a .glb is replaced: it changes the URL so a browser that cached the old file
   // cannot serve it. (nginx also revalidates these now, so this is belt and braces.)
-  const MODEL_VERSION = '2';
+  const MODEL_VERSION = '3';
   function setManifest(mf) { manifest = mf || {}; }
 
   function loadBuffer(url) {

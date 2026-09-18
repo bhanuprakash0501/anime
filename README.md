@@ -55,8 +55,8 @@ creature swims into a projected aquarium with the name floating above it.
   textures plus material-only extensions, which also unblocks models that require an extension
   three.js has dropped.
 * **Real 3D models.** All eight species ship with low-poly artist models in
-  `aquarium/models/` (Quaternius CC0 shark and manta; Poly by Google CC-BY turtle, crab,
-  jellyfish and seahorse; Sketchfab CC-BY octopus and clown fish; see `models/CREDITS.md`). Embedded textures were
+  `aquarium/models/` (Quaternius CC0 shark and manta; Poly by Google CC-BY turtle, crab and
+  jellyfish; Sketchfab CC-BY octopus, clown fish and seahorse; see `models/CREDITS.md`). Embedded textures were
   stripped since the tank skins them with the drawing. To swap any of them for a better or
   more realistic model, replace the `.glb` in `aquarium/models/` and adjust its line in
   `aquarium/models/manifest.json` (see `manifest.example.json`): file, projection plane for
