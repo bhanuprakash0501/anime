@@ -661,25 +661,25 @@ window.SketchModels = (() => {
       let dx = 0, dy = 0, dz = 0;
       if (motion === 'pulse') {
         // bell squeezes and lifts; everything hanging below trails in a wave
-        if (ny > 0.15) { const k = (ny - 0.15) / 0.85; dx += (x - d.c.x) * (-p * 0.07 * k); dz += (z - d.c.z) * (-p * 0.07 * k); dy += (y - d.c.y) * (p * 0.06); }
-        else { const depth = (0.15 - ny) / 1.15; const w = Math.sin(t * 2.2 + ph - depth * 5) * 0.05 * hw * depth; dx += w; dz += Math.cos(t * 1.7 + ph - depth * 4) * 0.04 * hw * depth; dy += -p * 0.03 * hy * depth; }
+        if (ny > 0.15) { const k = (ny - 0.15) / 0.85; dx += (x - d.c.x) * (-p * 0.13 * k); dz += (z - d.c.z) * (-p * 0.13 * k); dy += (y - d.c.y) * (p * 0.11); }
+        else { const depth = (0.15 - ny) / 1.15; const w = Math.sin(t * 2.2 + ph - depth * 5) * 0.11 * hw * depth; dx += w; dz += Math.cos(t * 1.7 + ph - depth * 4) * 0.09 * hw * depth; dy += -p * 0.06 * hy * depth; }
       } else if (motion === 'crawl') {
         // legs (low and out to the sides) step in two alternating groups; body bobs
         const leg = ny < -0.05 && Math.abs(nw) > 0.3;
         const grp = (nw > 0 ? 0 : Math.PI) + (nl > 0 ? 0 : Math.PI);
-        if (leg) { const k = Math.min(1, (Math.abs(nw) - 0.3) / 0.5) * Math.min(1, (-0.05 - ny) / 0.6); dy += Math.max(0, Math.sin(t * 9 * sp + ph + grp)) * 0.14 * hy * k; }
+        if (leg) { const k = Math.min(1, (Math.abs(nw) - 0.3) / 0.5) * Math.min(1, (-0.05 - ny) / 0.6); dy += Math.max(0, Math.sin(t * 9 * sp + ph + grp)) * 0.30 * hy * k; }
         dy += Math.abs(Math.sin(t * 9 * sp + ph)) * 0.02 * hy;
       } else if (motion === 'swim_slow') {
         // flippers / limbs out to the sides stroke up and down; slight body undulation
         const k = Math.max(0, (Math.abs(nw) - 0.4) / 0.6);
-        dy += Math.sin(t * 2.2 * sp + ph - Math.abs(nw) * 1.5) * 0.18 * hy * k * k;
+        dy += Math.sin(t * 2.2 * sp + ph - Math.abs(nw) * 1.5) * 0.32 * hy * k * k;
         const tail = Math.max(0, -nl);
         if (latI === 0) dx += Math.sin(t * 2.2 * sp + ph) * 0.02 * hw * tail; else dz += Math.sin(t * 2.2 * sp + ph) * 0.02 * hw * tail;
       } else if (motion === 'upright') {
         // gentle sway that grows with height, tail (bottom) curls, fin area flutters
-        const sway = Math.sin(t * 1.4 + ph + ny * 1.2) * 0.03 * hw * (0.4 + 0.6 * Math.abs(ny));
+        const sway = Math.sin(t * 1.4 + ph + ny * 1.2) * 0.06 * hw * (0.4 + 0.6 * Math.abs(ny));
         if (latI === 0) dx += sway; else dz += sway;
-        if (ny < -0.35) { const k = (-0.35 - ny) / 0.65; const cur = Math.sin(t * 2.6 + ph - k * 3) * 0.06 * hl * k; if (lenI === 0) dx += cur; else dz += cur; }
+        if (ny < -0.35) { const k = (-0.35 - ny) / 0.65; const cur = Math.sin(t * 2.6 + ph - k * 3) * 0.11 * hl * k; if (lenI === 0) dx += cur; else dz += cur; }
       } else {
         // generic fish: side-to-side tail wag growing toward the tail end
         const k = Math.max(0, -nl) ; const wag = Math.sin(t * 6 * sp + ph - k * 3) * 0.06 * hw * k * k;
@@ -689,6 +689,46 @@ window.SketchModels = (() => {
     }
     pos.needsUpdate = true;
     mesh.geometry.computeVertexNormals();
+  }
+
+  // ------------------------------------- node-level part motion (arms, legs, fins)
+  // A model that names its limbs lets us rotate whole parts about the body centre. That
+  // reads far better than a vertex wobble and costs nothing however heavy the mesh is.
+  const PART_RE = /arm|tentacle|leg|flipper|claw|wing|body\.\d/;
+  const UP = new T.Vector3(0, 1, 0);
+  const _qA = new T.Quaternion(), _qB = new T.Quaternion();
+
+  function findParts(root) {
+    const parts = [], claimed = new Set();
+    root.updateMatrixWorld(true);
+    const centre = new T.Box3().setFromObject(root).getCenter(new T.Vector3());
+    root.traverse(o => {
+      if (!PART_RE.test((o.name || '').toLowerCase())) return;
+      for (let p = o.parent; p; p = p.parent) if (claimed.has(p)) return;   // outermost match only
+      const box = new T.Box3().setFromObject(o);
+      if (box.isEmpty()) return;                                           // empty group, nothing to swing
+      claimed.add(o);
+      const dir = box.getCenter(new T.Vector3()).sub(centre); dir.y = 0;
+      if (dir.lengthSq() < 1e-8) dir.set(1, 0, 0);
+      dir.normalize();
+      const axis = new T.Vector3().crossVectors(UP, dir);
+      if (axis.lengthSq() < 1e-8) axis.set(1, 0, 0);
+      parts.push({ node: o, q0: o.quaternion.clone(), axis: axis.normalize(), phase: parts.length * 1.1 });
+    });
+    return parts;
+  }
+
+  function animateParts(parts, t, motion, o) {
+    const fast = 0.7 + 0.3 * o.speedFactor;
+    const rate = motion === 'crawl' ? 5.0 : motion === 'pulse' ? 1.6 : 2.4;
+    const amp = motion === 'crawl' ? 0.20 : motion === 'pulse' ? 0.30 : 0.22;
+    for (const p of parts) {
+      const a = Math.sin(t * rate * fast + o.phase + p.phase) * amp;
+      const b = Math.cos(t * rate * 0.6 * fast + o.phase + p.phase) * amp * 0.5;
+      _qA.setFromAxisAngle(p.axis, a);
+      _qB.setFromAxisAngle(UP, b);
+      p.node.quaternion.copy(p.q0).premultiply(_qA).premultiply(_qB);
+    }
   }
 
   // =========================================================== glTF models
@@ -753,6 +793,9 @@ window.SketchModels = (() => {
     // animation: play a clip from the file if it has one, else a gentle procedural sway
     let mixer = null, lastT = null;
     const clips = gltf.animations || [];
+    const parts = clips.length ? [] : findParts(root);
+    const baseScale = root.scale.clone();
+    let deformed = 0;
     if (clips.length) {
       mixer = new T.AnimationMixer(root);
       const lower = c => c.name.toLowerCase();
@@ -763,15 +806,32 @@ window.SketchModels = (() => {
       if (!clip) clip = clips.find(c => !bad(c)) || clips[0];
       console.info('model clip for', spec.file + ':', clip.name);
       mixer.clipAction(clip).play();
-    } else {
-      root.traverse(o => { if (o.isMesh && o.userData.skin && !o.isSkinnedMesh) prepareDeform(o); });
+    } else if (!parts.length) {
+      // no clips and no named limbs: wobble the vertices, but only if the mesh is light
+      // enough to rebuild every frame on the CPU
+      let verts = 0;
+      root.traverse(o => { if (o.isMesh) verts += o.geometry.attributes.position.count; });
+      if (verts <= 60000) {
+        root.traverse(o => { if (o.isMesh && o.userData.skin && !o.isSkinnedMesh) { prepareDeform(o); deformed++; } });
+      } else {
+        console.info(spec.file + ': ' + verts + ' vertices, too heavy to deform per frame; using body motion only');
+      }
     }
     return {
       group: g, height: size2.y, width: size2.x, faces: 'x', external: true,
       anim(t, o) {
         const dt = lastT == null ? 0 : Math.min(0.1, t - lastT); lastT = t;
-        if (mixer) mixer.update(dt * (spec.speed || 1) * (0.7 + 0.3 * o.speedFactor));
-        else root.traverse(m => { if (m.isMesh && m.userData.deform) deformExternal(m, t, motion, o); });
+        if (mixer) { mixer.update(dt * (spec.speed || 1) * (0.7 + 0.3 * o.speedFactor)); return; }
+        if (parts.length) animateParts(parts, t, motion, o);
+        if (deformed) root.traverse(m => { if (m.isMesh && m.userData.deform) deformExternal(m, t, motion, o); });
+        // body itself: the bell/mantle squeezes on a pulse, everything else breathes gently
+        if (motion === 'pulse') {
+          const k = 1 + Math.sin(t * 1.6 + o.phase) * 0.06;
+          root.scale.set(baseScale.x * (2 - k), baseScale.y * k, baseScale.z * (2 - k));
+        } else if (!deformed) {
+          const k = 1 + Math.sin(t * 1.4 + o.phase) * 0.02;
+          root.scale.set(baseScale.x * k, baseScale.y * (2 - k), baseScale.z * k);
+        }
       },
     };
   }

@@ -16,3 +16,7 @@ species_preview.png
 
 # local test models only; real models are committed
 aquarium/models/_test_*
+
+# large source models kept locally, only the optimized .glb is committed
+aquarium/models/*_2.glb
+aquarium/models/*_src.glb
