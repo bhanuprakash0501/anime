@@ -697,14 +697,18 @@ window.SketchModels = (() => {
   const PART_RE = /arm|tentacle|leg|flipper|claw|wing|body\.\d/;
   const UP = new T.Vector3(0, 1, 0);
   const _qA = new T.Quaternion(), _qB = new T.Quaternion();
+  const _m3 = new T.Matrix3(), _v3 = new T.Vector3();
 
+  // Find the limbs and give each one its own tempo, reach and timing, so no two arms (and
+  // no two creatures) stroke in lockstep. Light limbs also get a travelling curl wave so
+  // they bend along their length instead of swinging like sticks.
   function findParts(root) {
     const parts = [], claimed = new Set();
     root.updateMatrixWorld(true);
     const centre = new T.Box3().setFromObject(root).getCenter(new T.Vector3());
     root.traverse(o => {
       if (!PART_RE.test((o.name || '').toLowerCase())) return;
-      for (let p = o.parent; p; p = p.parent) if (claimed.has(p)) return;   // outermost match only
+      for (let q = o.parent; q; q = q.parent) if (claimed.has(q)) return;   // outermost match only
       const box = new T.Box3().setFromObject(o);
       if (box.isEmpty()) return;                                           // empty group, nothing to swing
       claimed.add(o);
@@ -713,21 +717,76 @@ window.SketchModels = (() => {
       dir.normalize();
       const axis = new T.Vector3().crossVectors(UP, dir);
       if (axis.lengthSq() < 1e-8) axis.set(1, 0, 0);
-      parts.push({ node: o, q0: o.quaternion.clone(), axis: axis.normalize(), phase: parts.length * 1.1 });
+      axis.normalize();
+
+      const part = {
+        node: o, q0: o.quaternion.clone(), axis,
+        phase: Math.random() * 6.283,
+        rate: 0.8 + Math.random() * 0.5,          // its own tempo
+        gain: 0.75 + Math.random() * 0.5,         // its own reach
+        curlDir: Math.random() < 0.5 ? -1 : 1,
+        flourish: 0, nextFlourish: 2 + Math.random() * 8,
+        waves: [],
+      };
+
+      let verts = 0;
+      o.traverse(m => { if (m.isMesh) verts += m.geometry.attributes.position.count; });
+      if (verts <= 12000) {                       // cheap enough to bend every frame
+        o.traverse(m => {
+          if (!m.isMesh) return;
+          const geo = m.geometry, pos = geo.attributes.position;
+          _m3.setFromMatrix4(m.matrixWorld).invert();
+          const perp = axis.clone().applyMatrix3(_m3);
+          if (perp.lengthSq() < 1e-12) return;
+          perp.normalize();
+          geo.computeBoundingSphere();
+          const k = new Float32Array(pos.count);
+          let far = 1e-6;
+          for (let i = 0; i < pos.count; i++) {
+            k[i] = _v3.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld).distanceTo(centre);
+            if (k[i] > far) far = k[i];
+          }
+          for (let i = 0; i < pos.count; i++) k[i] /= far;      // 0 at the base, 1 at the tip
+          part.waves.push({ mesh: m, base: pos.array.slice(), k, perp, span: geo.boundingSphere.radius });
+        });
+      }
+      parts.push(part);
     });
     return parts;
   }
 
   function animateParts(parts, t, motion, o) {
-    const fast = 0.7 + 0.3 * o.speedFactor;
-    const rate = motion === 'crawl' ? 5.0 : motion === 'pulse' ? 1.6 : 2.4;
-    const amp = motion === 'crawl' ? 0.20 : motion === 'pulse' ? 0.30 : 0.22;
+    const fast = 0.7 + 0.5 * o.speedFactor;
+    const base = motion === 'crawl' ? 5.0 : motion === 'pulse' ? 1.7 : 2.4;
+    const amp = motion === 'crawl' ? 0.20 : motion === 'pulse' ? 0.34 : 0.22;
+    const waveAmp = motion === 'pulse' ? 0.20 : 0.06;
     for (const p of parts) {
-      const a = Math.sin(t * rate * fast + o.phase + p.phase) * amp;
-      const b = Math.cos(t * rate * 0.6 * fast + o.phase + p.phase) * amp * 0.5;
-      _qA.setFromAxisAngle(p.axis, a);
-      _qB.setFromAxisAngle(UP, b);
+      if (t > p.nextFlourish) { p.flourish = 1; p.nextFlourish = t + 4 + Math.random() * 9; }
+      if (p.flourish > 0.001) p.flourish *= 0.985; else p.flourish = 0;
+      const boost = 1 + p.flourish * 0.9;
+      const rate = base * p.rate * fast;
+      const ph = t * rate + o.phase + p.phase;
+      // shaped stroke: gathers quickly and spreads slowly, the way an octopus sculls
+      const sn = Math.sin(ph);
+      const stroke = (sn < 0 ? -1 : 1) * Math.pow(Math.abs(sn), 0.65);
+
+      _qA.setFromAxisAngle(p.axis, stroke * amp * p.gain * boost);
+      _qB.setFromAxisAngle(UP, Math.cos(t * rate * 0.6 + p.phase) * amp * 0.45 * p.gain);
       p.node.quaternion.copy(p.q0).premultiply(_qA).premultiply(_qB);
+
+      for (const w of p.waves) {
+        const arr = w.mesh.geometry.attributes.position.array, b = w.base, k = w.k;
+        const A = waveAmp * w.span * p.gain * boost * p.curlDir;
+        const px = w.perp.x, py = w.perp.y, pz = w.perp.z;
+        for (let i = 0, j = 0; i < k.length; i++, j += 3) {
+          const kk = k[i];
+          const off = Math.sin(ph - kk * 4.2) * A * kk * kk;     // wave runs base -> tip
+          arr[j] = b[j] + px * off;
+          arr[j + 1] = b[j + 1] + py * off;
+          arr[j + 2] = b[j + 2] + pz * off;
+        }
+        w.mesh.geometry.attributes.position.needsUpdate = true;
+      }
     }
   }
 
