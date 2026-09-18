@@ -650,15 +650,38 @@ window.SketchModels = (() => {
 
     const n = pos.count;
     const nl = new Float32Array(n), nw = new Float32Array(n), nv = new Float32Array(n);
+    const rad = new Float32Array(n);
     const v = new T.Vector3();
     for (let i = 0; i < n; i++) {
       v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld).sub(centre);
       nl[i] = v.x / Math.max(half.x, 1e-6);      // -1 tail .. +1 head
       nw[i] = v.z / Math.max(half.z, 1e-6);      // -1 .. +1 across the body
       nv[i] = v.y / Math.max(half.y, 1e-6);      // -1 bottom .. +1 top
+      rad[i] = Math.sqrt(v.y * v.y + v.z * v.z); // distance from the body's spine
     }
+
+    // Fins are the thin parts that stick out past the meat of the body. Slice the body along
+    // its length, take the typical radius of each slice, and flag whatever reaches well
+    // beyond it. This needs no names, so it works on models exported as one fused mesh.
+    const SLICES = 24;
+    const buckets = [];
+    for (let i = 0; i < SLICES; i++) buckets.push([]);
+    const slot = i => Math.min(SLICES - 1, Math.max(0, Math.floor((nl[i] + 1) / 2 * SLICES)));
+    for (let i = 0; i < n; i++) buckets[slot(i)].push(rad[i]);
+    const typical = buckets.map(b => {
+      if (!b.length) return 0;
+      b.sort((x, y) => x - y);
+      return b[Math.floor(b.length * 0.55)] || 1e-6;
+    });
+    const fin = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const base = typical[slot(i)];
+      if (base < 1e-6) continue;
+      fin[i] = Math.min(1, Math.max(0, (rad[i] / base - 1.25) / 0.6));
+    }
+
     mesh.userData.deform = {
-      base: pos.array.slice(), nl, nw, nv, fwd, side, up, toLocal,
+      base: pos.array.slice(), nl, nw, nv, fin, fwd, side, up, toLocal,
       hl: half.x, hw: half.z, hy: half.y,
     };
   }
@@ -666,7 +689,7 @@ window.SketchModels = (() => {
   function deformExternal(mesh, t, motion, o) {
     const d = mesh.userData.deform;
     const attr = mesh.geometry.attributes.position, a = attr.array, b = d.base;
-    const nl = d.nl, nw = d.nw, nv = d.nv;
+    const nl = d.nl, nw = d.nw, nv = d.nv, fin = d.fin;
     const sp = o.speedFactor, ph = o.phase;
     const p = Math.sin(t * 1.6 + ph);                          // pulse phase
     const f = d.toLocal;
@@ -708,9 +731,17 @@ window.SketchModels = (() => {
           const k = (-0.35 - V) / 0.65;
           dF = Math.sin(t * 2.6 + ph - k * 3) * 0.11 * d.hl * k;
         }
-      } else {                                                 // fish: tail wags sideways
+      } else {                                                 // fish
         const k = Math.max(0, -L);
-        dS = Math.sin(t * 6 * sp + ph - k * 3) * 0.10 * d.hw * k * k;
+        dS = Math.sin(t * 6 * sp + ph - k * 3) * 0.10 * d.hw * k * k;   // tail wags sideways
+        const fw = fin[i];
+        if (fw > 0) {
+          const aw = W < 0 ? -W : W, av = V < 0 ? -V : V;
+          const beat = t * 8 * sp + ph + L * 3;
+          // fins that stand out sideways row up and down; those on the back and belly ripple
+          if (aw > av) dU += Math.sin(beat) * 0.10 * d.hy * fw;
+          else dS += Math.sin(beat + 1.6) * 0.07 * d.hw * fw;
+        }
       }
       a[j] = b[j] + (fx * dF + sx * dS + ux * dU) * f;
       a[j + 1] = b[j + 1] + (fy * dF + sy * dS + uy * dU) * f;
