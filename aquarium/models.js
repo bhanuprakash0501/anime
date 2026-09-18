@@ -829,6 +829,9 @@ window.SketchModels = (() => {
   // clip     - animation clip to play (default: the first one); speed - playback multiplier
   let manifest = {};
   const bufferCache = {};
+  // Bump when a .glb is replaced: it changes the URL so a browser that cached the old file
+  // cannot serve it. (nginx also revalidates these now, so this is belt and braces.)
+  const MODEL_VERSION = '2';
   function setManifest(mf) { manifest = mf || {}; }
 
   function loadBuffer(url) {
@@ -838,7 +841,7 @@ window.SketchModels = (() => {
 
   async function buildFromGltf(spec, tex, base, motion) {
     if (!T.GLTFLoader) return null;
-    const buf = await loadBuffer(base + '/models/' + spec.file);
+    const buf = await loadBuffer(base + '/models/' + spec.file + '?v=' + (spec.v || MODEL_VERSION));
     const gltf = await new Promise((res, rej) => new T.GLTFLoader().parse(buf.slice(0), base + '/models/', res, rej));
     const root = gltf.scene;
     const g = new T.Group();
